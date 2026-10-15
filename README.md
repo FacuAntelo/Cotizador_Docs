@@ -71,6 +71,7 @@ npm run dev
 matcher-nissan/
 ├── CONTEXT.md               ← contexto del proyecto para el LLM
 ├── STANDARDS.md             ← estándares de desarrollo
+├── INTEGRACIONES.md         ← cómo funcionan EPC y SAP por dentro (hallazgos técnicos)
 ├── backend/
 │   ├── app/
 │   │   ├── core/config.py   ← configuración (pydantic-settings)
