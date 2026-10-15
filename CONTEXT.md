@@ -10,8 +10,8 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 
 - **Backend:** Python 3.11+ + FastAPI, gestión de deps con `uv`
 - **Frontend:** React + Vite (`frontend/src/App.jsx`)
-- **LLM:** Claude API (claude-sonnet-4-20250514) vía Anthropic SDK
-- **Automatización browser:** Playwright (sesión persistida en `~/.epc_session`)
+- **LLM:** Claude API (claude-haiku-5-5) vía Anthropic SDK
+- **Automatización browser:** Playwright, sólo para los logins (EPC y SAP); los datos se piden a las APIs
 - **Linting:** Ruff
 - **Puerto backend:** 8000 | **Puerto frontend:** 5173
 
@@ -39,17 +39,34 @@ Claude entiende jerga argentina: pdi/pdd/pti/ptd, fender (=moldura plástica, NO
 
 ### 2. EPC Scraper — `POST /epc`
 
-Consulta el EPC de Nissan en superservice.com usando Playwright.
+> Detalle técnico completo de EPC y SAP (endpoints, licencia, cookies, tiempos medidos): ver `INTEGRACIONES.md`.
 
-**Flujo confirmado:**
-1. Login en `https://login.superservice.com/login/es-es/`
-2. Click en `<button><span>Iniciar</span></button>` → abre nueva pestaña Microcat EPC
-3. Chasis → `#genericSearchInput` + Enter
-4. Familia (5 chars) → `#globalSearchInput` + Enter
-5. Resultados en ag-grid → `span#copyablePartNumberValue` (formato `16546-5RA0A`)
-6. Se normaliza quitando guión: `165465RA0A`
+Consulta el EPC de Nissan (Microcat, superservice.com). Esquema mixto:
+Playwright sólo hace el login y deja abierta la pestaña del EPC; los datos se
+piden a la API interna del EPC con `fetch()` desde esa pestaña, reutilizando los
+headers que manda la propia app (`authorization`, `x-ifm-session-id`, `x-ifm-sid`, …).
 
-**Grupos de familias equivalentes:** `80101` y `H0101` son el mismo repuesto en distintos catálogos. Si 80101 devuelve resultado, H0101 no se consulta.
+**Flujo:**
+1. Login en `https://login.superservice.com/login/es-es/` → click en `Iniciar` → abre la pestaña del EPC
+2. Se capturan los headers del primer pedido autenticado de la app y se verifica la licencia (`POST /v1/sessions/heartbeat`)
+3. Vehículo → `GET /v3/vehicle/search?searchTerm=<VIN o últimos 8>` → `id` interno (cacheado por sesión)
+4. Familia → `GET /v1/globalsearch/search?q=<familia>&vehicleId=<id>` → números (formato `16546-5RA0A`)
+5. Se normaliza quitando guión (`165465RA0A`) y se descartan piezas de otras familias
+
+**Rendimiento medido (8 ítems / 17 familias):** UI por Playwright 31–63 s → API 3,3 s.
+Hasta 6 pedidos en paralelo; el EPC no los toma como "otro dispositivo".
+
+**Licencia:** es nominal (un dispositivo a la vez). Si otro dispositivo la toma, la API
+responde 403 con el header `x-ifm-licensing-error` y se recupera con
+`POST /v1/sessions/device?source=use_license` (lo mismo que el botón "Usar licencia").
+El EPC impone ~60 s de espera (`Retry-After`) tras cada cambio de dispositivo, incluso
+a un login nuevo: en ese lapso la consulta falla con un mensaje que indica los segundos.
+
+**Sesión:** la app manda un heartbeat cada 90 s mientras la pestaña está abierta y el
+token dura ~20 h. Medido: tras 34 min sin consultas la sesión seguía viva (consulta en
+1,75 s, sin re-login). El backend libera la sesión tras `SESSION_KEEPALIVE_HOURS` sin uso.
+
+**Grupos de familias equivalentes:** `80101` y `H0101` son el mismo repuesto en distintos catálogos. Se consultan en paralelo y gana la primera, en orden, que devuelve resultado.
 
 ```json
 // Request
@@ -64,7 +81,18 @@ Consulta el EPC de Nissan en superservice.com usando Playwright.
 
 ### 3. EPC Session y Estado — `POST /epc/connect` y `GET /epc/session`
 
-Permite iniciar sesión manualmente de forma preventiva y obtener el estado visual de la sesión (tiempos restantes máximo y por inactividad). El Scraper mantiene internamente contadores `_session_start_time` y `_last_activity_time` para reportar estos datos al frontend.
+Permite forzar un login nuevo y obtener el estado de la sesión: `time_left_seconds` es lo que le queda al token del EPC (se lee del JWT) e `inactivity_left_seconds` lo que falta para que el backend libere la sesión por falta de uso. Al arrancar el backend la sesión se abre sola en segundo plano (`WARMUP_ON_START`).
+
+### 3b. Stock SAP — `POST /sap/stock`
+
+Playwright hace el login SAML (IAS) y corta apenas el portal emite la sesión (`/login/callback`); el stock se pide con httpx a un endpoint CPI del launchpad. Las cookies se guardan en `SAP_SESSION_FILE`, así un reinicio del backend no re-loguea, y con la sesión de IAS viva el re-login no pasa por el formulario (SSO). Un keep-alive cada 5 min (`GET /cp.portal/portal/rest/v1/personalization`, 200 con sesión / 401 sin ella) la mantiene viva mientras haya uso reciente. Medido: la sesión del portal sobrevive 25 min sin uso y vence antes de los 35; a los 35 min la sesión de IAS seguía viva y el re-login fue silencioso. Las consultas corren en paralelo; sólo el login se serializa.
+
+| Escenario | Tiempo |
+|---|---|
+| Login completo + consulta | ~14 s |
+| Reinicio con cookies vigentes | ~2 s |
+| Portal vencido, IAS vivo (SSO) | ~6,5 s |
+| Consulta con sesión abierta | ~1,3–2 s (8 en paralelo ≈ 2,2 s) |
 
 ### 4. Cotizador unificado — `POST /cotizar`
 
@@ -128,7 +156,8 @@ matcher-nissan/
 │   │   │   └── cotizar.py             # CotizarRequest, CotizarResult
 │   │   └── services/
 │   │       ├── matcher_service.py     # lógica Claude + catálogo
-│   │       ├── epc_scraper.py         # lógica Playwright
+│   │       ├── epc_scraper.py         # sesión EPC (Playwright) + consultas a su API
+│   │       ├── sap_stock.py           # login SAP (Playwright) + stock por httpx
 │   │       └── cotizar_service.py     # orquesta matcher + scraper
 │   ├── .env                           # NO commitear
 │   ├── .env.example                   # sí commitear
@@ -224,11 +253,11 @@ EPC_HEADFUL=false          # true para ver el browser (debug)
 
 1. **El LLM hace toda la normalización** — el catálogo completo va como contexto y Claude resuelve jerga, abreviaturas, lado dominante. Sin diccionarios de expansión.
 
-2. **Familias equivalentes agrupadas** — las familias de un ítem del `/match` (ej: `["80101", "H0101"]`) ya forman el grupo equivalente para el EPC. Si la primera devuelve resultado, las demás no se consultan.
+2. **Familias equivalentes agrupadas** — las familias de un ítem del `/match` (ej: `["80101", "H0101"]`) ya forman el grupo equivalente para el EPC. Se consultan en paralelo y gana la primera, en orden, con resultado.
 
-3. **Sesión Playwright persistida** — la sesión EPC se guarda en disco (`~/.epc_session`). Solo hace login la primera vez.
+3. **Playwright sólo para los logins** — EPC: la pestaña queda abierta para que la app mantenga la sesión y la licencia, y los datos se piden a su API con `fetch()` desde esa pestaña (sin tocar el DOM). SAP: el browser se cierra apenas se obtiene la sesión; las cookies se guardan en `SAP_SESSION_FILE`. Ambas sesiones se precalientan al arrancar y se liberan tras `SESSION_KEEPALIVE_HOURS` sin uso.
 
-4. **Singleton scraper compartido** — el `EPCScraper` vive en `app/routers/epc.py` y es importado por `app/routers/cotizar.py` para garantizar que ambos endpoints usen la misma instancia y la misma sesión de browser.
+4. **Singleton scraper compartido** — el `EPCScraper` vive en `app/routers/epc.py` y es importado por `app/routers/cotizar.py` para garantizar que ambos endpoints usen la misma instancia y la misma sesión de browser. Los pedidos al EPC pueden ir en paralelo y no dependen de un "chasis cargado": cada búsqueda indica su chasis.
 
 5. **Dos modos de operación:**
    - Sin chasis: applicability desde BD (en el futuro)
