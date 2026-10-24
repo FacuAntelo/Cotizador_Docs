@@ -98,7 +98,7 @@ Playwright hace el login SAML (IAS) y corta apenas el portal emite la sesión (`
 
 > Detalle del DMS (servidor, fórmula del stock, por qué un agente): ver `INTEGRACIONES.md`.
 
-El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del taller), al que el backend en la nube no llega. Un agente en el servidor del taller (pendiente) calcula el stock cada pocos minutos y sube la foto completa con `PUT /dms/stock` y `Authorization: Bearer <DMS_AGENT_TOKEN>`; la foto reemplaza a la anterior y se guarda en `DMS_STOCK_FILE` para sobrevivir reinicios. `POST /dms/stock` responde como `/sap/stock` (`{"materiales": [...]}`), con el total y el detalle por depósito, comparando códigos sin guiones. Si la foto tiene más de `DMS_STALE_MINUTES`, la respuesta trae `desactualizado: true`. Los depósitos de `DMS_EXCLUDED_DEPOSITS` (por defecto `GARANTIAS`) no cuentan.
+El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del taller), al que el backend en la nube no llega. Un agente en el servidor del taller (`Cotizador_BE/agente_dms/`) calcula el stock cada pocos minutos y sube la foto completa con `PUT /dms/stock` y `Authorization: Bearer <DMS_AGENT_TOKEN>`; la foto reemplaza a la anterior y se guarda en `DMS_STOCK_FILE` para sobrevivir reinicios. `POST /dms/stock` responde como `/sap/stock` (`{"materiales": [...]}`), con el total y el detalle por depósito, comparando códigos sin guiones. Si la foto tiene más de `DMS_STALE_MINUTES`, la respuesta trae `desactualizado: true`. Los depósitos de `DMS_EXCLUDED_DEPOSITS` (por defecto `GARANTIAS`) no cuentan.
 
 ```json
 // POST /dms/stock → { "materiales": ["1520865F0E"] }
