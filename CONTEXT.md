@@ -99,7 +99,9 @@ Playwright hace el login SAML (IAS) y corta apenas el portal emite la sesión (`
 
 > Detalle del DMS (servidor, fórmula del stock, por qué un agente): ver `INTEGRACIONES.md`.
 
-El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del taller), al que el backend en la nube no llega. Un agente en el servidor del taller (`Cotizador_BE/agente_dms/`) calcula el stock cada pocos minutos y sube la foto completa con `PUT /dms/stock` y `Authorization: Bearer <DMS_AGENT_TOKEN>`; la foto reemplaza a la anterior y se guarda en la base (tablas `dms_stock` y `dms_stock_uploads`). `POST /dms/stock` responde como `/sap/stock` (`{"materiales": [...]}`), con el total y el detalle por depósito, comparando códigos sin guiones. Si la foto tiene más de `DMS_STALE_MINUTES`, la respuesta trae `desactualizado: true`. Los depósitos de `DMS_EXCLUDED_DEPOSITS` (por defecto `GARANTIAS`) no cuentan.
+El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del taller), al que el backend en la nube no llega. Un agente en el servidor del taller (`Cotizador_BE/agente_dms/`) calcula el stock cada pocos minutos y sube la foto completa con `PUT /dms/stock` y `Authorization: Bearer <DMS_AGENT_TOKEN>`; la foto reemplaza a la anterior y se guarda en la base (tablas `dms_stock` y `dms_stock_uploads`). `POST /dms/stock` responde como `/sap/stock` (`{"materiales": [...]}`), con el total y el detalle por depósito, comparando códigos sin guiones. Si la foto tiene más de `DMS_STALE_MINUTES`, la respuesta trae `desactualizado: true`. Se guardan todos los depósitos con su ubicación (si el agente la manda), pero los de `DMS_EXCLUDED_DEPOSITS` (por defecto `GARANTIAS,PICKING`) vienen con `incluido_por_defecto: false` y no suman a `disponible`.
+
+En el front, la columna **Stock** de la tabla (y el bloque "Stock" de las sugerencias del asesor) muestra las unidades de cada N° de pieza. El número y la **(i)** abren un popover con cada depósito: unidades, ubicación y una casilla para sumarlo o no. Las casillas valen para todos los repuestos (destildar RACK lo saca de todos) y quedan guardadas en el navegador (`localStorage`, sólo las diferencias con lo que viene por defecto). Código: `Cotizador_FE/src/features/shop-stock/`.
 
 ```json
 // POST /dms/stock → { "materiales": ["1520865F0E"] }
@@ -108,7 +110,10 @@ El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del 
   "desactualizado": false,
   "items": [
     { "material": "1520865F0E", "disponible": 122,
-      "depositos": [{ "deposito": "RACK", "existencia": 84 }, { "deposito": "CENTRAL", "existencia": 38 }] }
+      "depositos": [
+        { "deposito": "RACK", "existencia": 84, "ubicacion": null, "incluido_por_defecto": true },
+        { "deposito": "CENTRAL", "existencia": 38, "ubicacion": null, "incluido_por_defecto": true }
+      ] }
   ]
 }
 ```
@@ -251,7 +256,7 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | Tabla | Qué guarda |
 |---|---|
 | `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. Antes vivían en `data/catalogo_candidatos.json`: la migración inicial las importa una vez si encuentra el archivo |
-| `dms_stock` | Última foto del stock del taller, por código y depósito |
+| `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
 | `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades |
 
 Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
