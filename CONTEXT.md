@@ -9,7 +9,7 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 ## Stack tecnológico
 
 - **Backend:** Python 3.11+ + FastAPI, gestión de deps con `uv`
-- **Frontend:** React + Vite (`frontend/src/App.jsx`)
+- **Frontend:** React + TypeScript + Vite, SPA con TanStack Query y tipos generados del OpenAPI (ver `Cotizador_FE/README.md`)
 - **LLM:** Claude API (claude-haiku-5-5) vía Anthropic SDK
 - **Automatización browser:** Playwright, sólo para los logins (EPC y SAP); los datos se piden a las APIs
 - **Linting:** Ruff
@@ -158,11 +158,15 @@ Reglas del matcher que importan: solo asigna un repuesto del catálogo si es exa
 
 Si el matcher marca un ítem con `interpretacion` (existe pero no está en el catálogo), `PartAdvisorService` (`app/services/part_advisor.py`) hace un ida y vuelta con un segundo modelo (`ANTHROPIC_ADVISOR_MODEL`, por defecto `claude-opus-5-5`), en paralelo con el resto de la cotización:
 
-1. **Propuesta**: el modelo recibe el texto del cliente tal cual (no la interpretación del matcher: si es errónea lo arrastra a otra pieza), el vehículo (del EPC) y los repuestos del catálogo que comparten palabras con el pedido, marcados como descartados. Las familias que pertenecen al catálogo se filtran también en el código: si el pedido fuera una de ellas, el matcher ya la habría encontrado. Devuelve familias en una sola de dos listas: `familias_vehiculo` (hasta 3 que podrían ser de este vehículo) o `familias_otros_modelos` (si cree que el vehículo no lleva la pieza: hasta 3 habituales en otros modelos Nissan). Más una `aclaracion` para el vendedor.
+1. **Propuesta**: el modelo recibe el texto del cliente tal cual (no la interpretación del matcher: si es errónea lo arrastra a otra pieza), el vehículo (del EPC) y los repuestos del catálogo que comparten palabras con el pedido, marcados como descartados. Las familias que pertenecen al catálogo se filtran también en el código: si el pedido fuera una de ellas, el matcher ya la habría encontrado. Devuelve familias en una sola de dos listas: `familias_vehiculo` (hasta 5 que podrían ser de este vehículo) o `familias_otros_modelos` (si cree que el vehículo no lleva la pieza: hasta 5 habituales en otros modelos Nissan). Más una `aclaracion` para el vendedor. Si el nombre sirve para piezas distintas ("volante": de dirección o del motor), propone familias de todas en lugar de elegir una.
 2. **EPC**: se buscan esas familias para el chasis.
 3. **Elección** (misma conversación, con los números completos del EPC): una opción si corresponde una sola pieza, varias con una `pregunta` para el cliente si son piezas distintas (ej. sonda delantera o trasera), o ninguna. Se descartan números que el EPC no devolvió.
 
-Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el vehículo probablemente no lleva esa pieza. En el front, la fila muestra el panel "Asesor IA" (aclaración, explicación, confianza, opciones) y los botones **Validar** / **Descartar**: validar llama a `POST /catalogo/candidatos`, que guarda la familia en `CATALOG_CANDIDATES_FILE` (`data/catalogo_candidatos.json`) como **candidata pendiente**: el catálogo se actualiza a mano después de revisarlas (`GET /catalogo/candidatos`).
+Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el vehículo probablemente no lleva esa pieza. En el front, estos ítems van en su propia sección "Asesor IA", debajo de la tabla, con la interpretación, el resultado, la confianza, las opciones y los botones **Validar** / **Descartar**: validar pasa el ítem a la tabla de repuestos identificados y llama a `POST /catalogo/candidatos`, que guarda la familia en `CATALOG_CANDIDATES_FILE` (`data/catalogo_candidatos.json`) como **candidata pendiente**: el catálogo se actualiza a mano después de revisarlas (`GET /catalogo/candidatos`).
+
+**Pedidos ambiguos.** Si el texto nombra piezas distintas y el pedido no aclara cuál, el matcher no elige: lo marca con `ambiguo: true` y lo manda al asesor (aunque alguna esté en el catálogo), que ofrece una opción por pieza con su `pregunta`. En ese caso el asesor sí puede proponer familias del catálogo.
+
+**Corregir al asesor** — `POST /cotizar/asesor`. El vendedor puede corregir cualquier ítem (una sugerencia del asesor o un repuesto que el matcher asignó mal): escribe qué pieza es ("es la pantalla del electroventilador") y el asesor vuelve a hacer el ida y vuelta con todas sus indicaciones y las familias que ya descartó. Con una corrección también puede proponer familias del catálogo. Al validar, la última indicación se guarda como `interpretacion` de la candidata.
 
 ---
 
