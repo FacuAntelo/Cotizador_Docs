@@ -354,9 +354,9 @@ stock del día anterior: no sirve para cotizar.
 
 El backend corre en la nube. Conectarlo directo a la base exigiría publicar el puerto 1433 en
 internet con un SQL Server sin parches desde 2012 (sólo TLS 1.0) y logins que pueden escribir.
-En cambio, un agente en el servidor del taller (pendiente: tarea programada en PowerShell 4, sin
-instalar nada) calcula el stock cada pocos minutos y lo sube por HTTPS a `PUT /dms/stock`; sólo
-hay conexiones salientes. Medido desde el servidor: sale a internet sin proxy, pero .NET usa
+En cambio, un agente en el servidor del taller (tarea programada en PowerShell 4, sin instalar
+nada) calcula el stock cada pocos minutos y lo sube por HTTPS a `PUT /dms/stock`; sólo hay
+conexiones salientes. Medido desde el servidor: sale a internet sin proxy, pero .NET usa
 SSL 3/TLS 1.0 por defecto, así que el agente tiene que forzar TLS 1.2.
 
 Sube siempre la foto completa, no las diferencias: si una subida falla, la siguiente corrige todo.
@@ -417,6 +417,21 @@ Sube siempre la foto completa, no las diferencias: si una subida falla, la sigui
 - La antigüedad se mide con el reloj del backend al recibir la foto, no con el del servidor del taller.
 - El router (`app/routers/dms.py`) exige `Authorization: Bearer <DMS_AGENT_TOKEN>` sólo en la
   subida; sin token configurado la subida responde 503.
+
+### El agente (`Cotizador_BE/agente_dms/`)
+
+Instalación y operación: ver el `README.md` de esa carpeta.
+
+- `instalar_agente_dms.ps1` crea el login `cotizador_ro` con `SELECT` sobre `KardexTR` y `DENY` de
+  escritura sobre el esquema `dbo` (le gana a cualquier permiso del rol `public`), y verifica con
+  ese login que no pueda escribir antes de guardar la configuración. La contraseña es aleatoria y
+  queda en `agente.config.json`, que sólo pueden leer Administradores y SYSTEM.
+- La tarea programada corre como SYSTEM cada 5 minutos (disparador diario que se repite, porque la
+  repetición "indefinida" falla en algunas versiones de Windows), no arranca otra corrida si la
+  anterior sigue y corta a los 4 minutos.
+- `agente_stock_dms.ps1` fuerza TLS 1.2, sube la foto en un solo `PUT` (~2.000 filas, menos de
+  100 ms medido contra un backend local) y deja una línea por corrida en `logs\`. Con `-Prueba`
+  guarda la foto en `stock_prueba.json` sin subirla.
 
 ### Configuración (`.env`)
 
