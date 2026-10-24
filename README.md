@@ -51,10 +51,11 @@ EPC_PASSWORD=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false
+DATABASE_URL=sqlite:///data/cotizador.db   # opcional: es el valor por defecto
 ```
 
 ```bash
-# Levantar servidor
+# Levantar servidor (al arrancar crea o actualiza la base en data/cotizador.db)
 uv run uvicorn main:app --reload
 # → http://localhost:8000
 ```
@@ -78,9 +79,13 @@ matcher-nissan/
 ├── backend/
 │   ├── app/
 │   │   ├── core/config.py   ← configuración (pydantic-settings)
+│   │   ├── database/        ← acceso a la base (engine, repositorios, migraciones)
+│   │   ├── models/          ← tablas (SQLAlchemy)
 │   │   ├── routers/         ← endpoints HTTP (match, epc, cotizar)
 │   │   ├── schemas/         ← modelos Pydantic request/response
 │   │   └── services/        ← lógica de negocio (Claude, Playwright, orquestación)
+│   ├── migrations/          ← migraciones de Alembic
+│   ├── alembic.ini
 │   ├── .env.example
 │   ├── pyproject.toml
 │   └── main.py
@@ -96,7 +101,10 @@ uv run ruff check . --fix
 uv run ruff format .
 
 # Tests
-uv run pytest tests/unit -v
+uv run pytest -v
+
+# Migración nueva después de cambiar un modelo de app/models/
+uv run alembic revision --autogenerate -m "descripcion"
 ```
 
 Commits en formato convencional: `feat(cotizar): descripción`, `fix(epc): ...`, etc.

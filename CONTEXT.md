@@ -12,6 +12,7 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 - **Frontend:** React + TypeScript + Vite, SPA con TanStack Query y tipos generados del OpenAPI (ver `Cotizador_FE/README.md`)
 - **LLM:** Claude API (claude-haiku-5-5) vía Anthropic SDK
 - **Automatización browser:** Playwright, sólo para los logins (EPC y SAP); los datos se piden a las APIs
+- **Base de datos:** SQLite (`data/cotizador.db`) con SQLAlchemy 2 y migraciones de Alembic; Postgres más adelante (ver [Base de datos](#base-de-datos))
 - **Linting:** Ruff
 - **Puerto backend:** 8000 | **Puerto frontend:** 5173
 
@@ -98,7 +99,7 @@ Playwright hace el login SAML (IAS) y corta apenas el portal emite la sesión (`
 
 > Detalle del DMS (servidor, fórmula del stock, por qué un agente): ver `INTEGRACIONES.md`.
 
-El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del taller), al que el backend en la nube no llega. Un agente en el servidor del taller (`Cotizador_BE/agente_dms/`) calcula el stock cada pocos minutos y sube la foto completa con `PUT /dms/stock` y `Authorization: Bearer <DMS_AGENT_TOKEN>`; la foto reemplaza a la anterior y se guarda en `DMS_STOCK_FILE` para sobrevivir reinicios. `POST /dms/stock` responde como `/sap/stock` (`{"materiales": [...]}`), con el total y el detalle por depósito, comparando códigos sin guiones. Si la foto tiene más de `DMS_STALE_MINUTES`, la respuesta trae `desactualizado: true`. Los depósitos de `DMS_EXCLUDED_DEPOSITS` (por defecto `GARANTIAS`) no cuentan.
+El stock propio del taller vive en el DMS (AutoDealer, SQL Server en la red del taller), al que el backend en la nube no llega. Un agente en el servidor del taller (`Cotizador_BE/agente_dms/`) calcula el stock cada pocos minutos y sube la foto completa con `PUT /dms/stock` y `Authorization: Bearer <DMS_AGENT_TOKEN>`; la foto reemplaza a la anterior y se guarda en la base (tablas `dms_stock` y `dms_stock_uploads`). `POST /dms/stock` responde como `/sap/stock` (`{"materiales": [...]}`), con el total y el detalle por depósito, comparando códigos sin guiones. Si la foto tiene más de `DMS_STALE_MINUTES`, la respuesta trae `desactualizado: true`. Los depósitos de `DMS_EXCLUDED_DEPOSITS` (por defecto `GARANTIAS`) no cuentan.
 
 ```json
 // POST /dms/stock → { "materiales": ["1520865F0E"] }
@@ -162,7 +163,7 @@ Si el matcher marca un ítem con `interpretacion` (existe pero no está en el ca
 2. **EPC**: se buscan esas familias para el chasis.
 3. **Elección** (misma conversación, con los números completos del EPC): una opción si corresponde una sola pieza, varias con una `pregunta` para el cliente si son piezas distintas (ej. sonda delantera o trasera), o ninguna. Se descartan números que el EPC no devolvió.
 
-Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el vehículo probablemente no lleva esa pieza. En el front, estos ítems van en su propia sección "Asesor IA", debajo de la tabla, con la interpretación, el resultado, la confianza, las opciones y los botones **Validar** / **Descartar**: validar pasa el ítem a la tabla de repuestos identificados y llama a `POST /catalogo/candidatos`, que guarda la familia en `CATALOG_CANDIDATES_FILE` (`data/catalogo_candidatos.json`) como **candidata pendiente**: el catálogo se actualiza a mano después de revisarlas (`GET /catalogo/candidatos`).
+Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el vehículo probablemente no lleva esa pieza. En el front, estos ítems van en su propia sección "Asesor IA", debajo de la tabla, con la interpretación, el resultado, la confianza, las opciones y los botones **Validar** / **Descartar**: validar pasa el ítem a la tabla de repuestos identificados y llama a `POST /catalogo/candidatos`, que guarda la familia en la tabla `catalog_candidates` como **candidata pendiente**: el catálogo se actualiza a mano después de revisarlas (`GET /catalogo/candidatos`).
 
 **Pedidos ambiguos.** Si el texto nombra piezas distintas y el pedido no aclara cuál, el matcher no elige: lo marca con `ambiguo: true` y lo manda al asesor (aunque alguna esté en el catálogo), que ofrece una opción por pieza con su `pregunta`. En ese caso el asesor sí puede proponer familias del catálogo.
 
@@ -238,9 +239,22 @@ EPC_PASSWORD=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false          # true para ver el browser (debug)
+DATABASE_URL=sqlite:///data/cotizador.db   # default; Postgres más adelante
 ```
 
 ---
+
+## Base de datos
+
+SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones de Alembic en `migrations/`. El backend aplica las migraciones al arrancar (`upgrade_database()` en el lifespan de `main.py`). Las tablas están en `app/models/` y el acceso en los repositorios de `app/database/`, que son sincrónicos y los routers llaman con `asyncio.to_thread`. Para pasar a Postgres alcanza con instalar el driver y cambiar `DATABASE_URL`.
+
+| Tabla | Qué guarda |
+|---|---|
+| `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. Antes vivían en `data/catalogo_candidatos.json`: la migración inicial las importa una vez si encuentra el archivo |
+| `dms_stock` | Última foto del stock del taller, por código y depósito |
+| `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades |
+
+Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
 
 ## Modelo de datos (diseñado, pendiente de implementar en DB)
 
@@ -303,7 +317,7 @@ EPC_HEADFUL=false          # true para ver el browser (debug)
 
 ## Próximos pasos en orden
 
-1. **Base de datos** (SQLite/SQLAlchemy) con el modelo diseñado
+1. **Modelo de catálogo en la base** (la base ya existe: SQLite + Alembic) con el modelo diseñado
 2. **Cache de resultados EPC** en tabla `applicability`
 3. **Tests unitarios** para `MatcherService` y `CotizarService` con mocks
 4. **Pre-commit hooks** (ruff + pytest)
