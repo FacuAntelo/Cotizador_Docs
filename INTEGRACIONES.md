@@ -409,9 +409,9 @@ Sube siempre la foto completa, no las diferencias: si una subida falla, la sigui
 
 ### `app/services/dms_stock.py`
 
-- Guarda la última foto en memoria, indexada por código normalizado (sin guiones ni espacios,
-  en mayúsculas), y la persiste en `DMS_STOCK_FILE`. Un archivo roto o ausente no es error:
-  se arranca sin foto y el agente la repone.
+- Guarda la última foto en la base (`dms_stock`, por código normalizado —sin guiones ni
+  espacios, en mayúsculas— y depósito) y registra cada subida en `dms_stock_uploads`. Cada
+  consulta lee la base, sin copia en memoria: así funciona igual con varias instancias del backend.
 - Al recibir una foto descarta los depósitos excluidos y las existencias nulas o negativas, y
   suma los depósitos repetidos de un mismo código.
 - La antigüedad se mide con el reloj del backend al recibir la foto, no con el del servidor del taller.
@@ -441,7 +441,7 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 | `SESSION_KEEPALIVE_HOURS` | `3` | Horas sin uso tras las que se liberan EPC y SAP |
 | `WARMUP_ON_START` | `true` | Abrir ambas sesiones al arrancar el backend |
 | `DMS_AGENT_TOKEN` | vacío | Token del agente del taller; vacío deshabilita la subida |
-| `DMS_STOCK_FILE` | `data/dms_stock.json` | Última foto del stock del taller entre reinicios |
+| `DATABASE_URL` | `sqlite:///data/cotizador.db` | Base donde se guarda la foto del stock del taller |
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
 | `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS` | Depósitos que no cuentan como stock (separados por coma) |
 
