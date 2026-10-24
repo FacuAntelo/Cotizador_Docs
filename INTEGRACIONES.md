@@ -1,4 +1,4 @@
-# Integraciones EPC y SAP — cómo funcionan por dentro
+# Integraciones EPC, SAP y DMS del taller — cómo funcionan por dentro
 
 Registro técnico de lo que se descubrió al analizar y reescribir las integraciones con
 el EPC de Nissan (Microcat) y con el portal SAP de Nissan Argentina (octubre 2026).
@@ -305,6 +305,62 @@ El piso de ~1,3 s es del lado de Nissan (approuter → CPI → S/4).
 
 ---
 
+## DMS del taller (AutoDealer)
+
+El DMS del taller es AutoDealer (FBS), una aplicación VB6 sobre SQL Server. A diferencia
+del EPC y de SAP no tiene web ni API: la única forma de leerlo es la base. Lo de esta sección
+salió de dos scripts de diagnóstico de solo lectura corridos en el servidor
+(`diagnostico_dms.ps1` y `diagnostico_dms_2.ps1`, en la raíz del workspace) y de los textos
+del programa `ADNissan_Automatico.exe` (octubre 2026).
+
+### Mapa (medido)
+
+| Qué | Valor |
+|---|---|
+| Servidor | `WIN-HOLCOH2SPLV` (192.168.1.10): Windows Server 2012 R2, PowerShell 4.0, .NET 4.8 |
+| Base | `Sai` en la instancia `SQLEXPRESS`: SQL Server 2012 **RTM** (11.0.2100, sin service packs), edición Standard |
+| Acceso | TCP 1433 abierto en la red del taller; desde afuera no se llega |
+| Logins | `AutoDealer` (el de la aplicación) es db_owner; el Administrador de Windows es sysadmin |
+
+### De dónde sale el stock (medido)
+
+No hay una columna de stock: se calcula con los movimientos de `KardexTR`, por repuesto y depósito.
+
+```sql
+SUM(CASE WHEN Tipo = 'I' THEN Cantidad WHEN Tipo = 'E' THEN -Cantidad ELSE 0 END)
+```
+
+- `Tipo`: `I` ingreso, `E` egreso, `N` no cuenta (no hay movimientos `N` desde 2024).
+- Es la misma cuenta que hacen la vista propia del DMS `Existencias` y el archivo REFINV de
+  `ADNissan_Automatico`: en 5 repuestos de muestra dieron igual. Conviene la cuenta directa
+  porque tarda **0,13 s** para todo el stock (230 mil movimientos) contra 0,9 s de la vista,
+  y sólo necesita leer `KardexTR`.
+- Resultado: ~1.900 combinaciones repuesto/depósito con stock, ~5.800 unidades.
+- Depósitos: CENTRAL, RACK, DEPOSITO 3, PAJARERA, PICKING y GARANTIAS (vacío hoy; se excluye
+  por defecto). Las columnas de `Depositos` (`Garantia`, `Activo`, `Principal`) no los distinguen.
+  Hay movimientos con depósito vacío (7 repuestos, 18 unidades).
+- Reservas: el DMS las maneja como un depósito `RESERVA` (vista `StockDepositoReserva`), que en
+  este taller no existe.
+- Códigos: 44.446 de 44.726 repuestos tienen el formato del EPC sin guión (`165465RA0A`); el
+  resto tiene guiones o espacios, que se quitan al comparar.
+- `Repuestos.Reemplazoa` registra reemplazos (5.147 repuestos): **inferido**, sirve para sumar el
+  stock de un número viejo cuando el EPC devuelve el nuevo. No se usa todavía.
+
+`ADNissan_Automatico.exe` (tarea programada "Simetrical", todos los días a las 22:00) genera los
+archivos para Simetrical en `C:\Buzon\Output` y los manda por FTP a la 1:00. Su REFINV es el
+stock del día anterior: no sirve para cotizar.
+
+### Por qué un agente que sube el stock
+
+El backend corre en la nube. Conectarlo directo a la base exigiría publicar el puerto 1433 en
+internet con un SQL Server sin parches desde 2012 (sólo TLS 1.0) y logins que pueden escribir.
+En cambio, un agente en el servidor del taller (pendiente: tarea programada en PowerShell 4, sin
+instalar nada) calcula el stock cada pocos minutos y lo sube por HTTPS a `PUT /dms/stock`; sólo
+hay conexiones salientes. Medido desde el servidor: sale a internet sin proxy, pero .NET usa
+SSL 3/TLS 1.0 por defecto, así que el agente tiene que forzar TLS 1.2.
+
+Sube siempre la foto completa, no las diferencias: si una subida falla, la siguiente corrige todo.
+
 ## Cómo está implementado
 
 ### `app/services/epc_scraper.py`
@@ -351,6 +407,17 @@ El piso de ~1,3 s es del lado de Nissan (approuter → CPI → S/4).
   todo el servidor mientras respondía.
 - `/cotizar/stream` emite cada resultado del EPC apenas llega (el front lo ubica por `index`).
 
+### `app/services/dms_stock.py`
+
+- Guarda la última foto en memoria, indexada por código normalizado (sin guiones ni espacios,
+  en mayúsculas), y la persiste en `DMS_STOCK_FILE`. Un archivo roto o ausente no es error:
+  se arranca sin foto y el agente la repone.
+- Al recibir una foto descarta los depósitos excluidos y las existencias nulas o negativas, y
+  suma los depósitos repetidos de un mismo código.
+- La antigüedad se mide con el reloj del backend al recibir la foto, no con el del servidor del taller.
+- El router (`app/routers/dms.py`) exige `Authorization: Bearer <DMS_AGENT_TOKEN>` sólo en la
+  subida; sin token configurado la subida responde 503.
+
 ### Configuración (`.env`)
 
 | Variable | Default | Uso |
@@ -358,6 +425,10 @@ El piso de ~1,3 s es del lado de Nissan (approuter → CPI → S/4).
 | `SAP_SESSION_FILE` | `~/.cotizador/sap_session.json` | Cookies de SAP entre reinicios |
 | `SESSION_KEEPALIVE_HOURS` | `3` | Horas sin uso tras las que se liberan EPC y SAP |
 | `WARMUP_ON_START` | `true` | Abrir ambas sesiones al arrancar el backend |
+| `DMS_AGENT_TOKEN` | vacío | Token del agente del taller; vacío deshabilita la subida |
+| `DMS_STOCK_FILE` | `data/dms_stock.json` | Última foto del stock del taller entre reinicios |
+| `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
+| `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS` | Depósitos que no cuentan como stock (separados por coma) |
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 
@@ -382,6 +453,8 @@ Qué puede romperse si Infomedia o Nissan cambian algo, y cómo se nota:
 | Parámetros de búsqueda | 400 en la API | `_SEARCH_PARAMS` (comparar con los pedidos de la app) |
 | Formulario de IAS | `SAPAuthError` o "SAP no completó el login a tiempo" | selectores en `sap_stock.py` |
 | Nueva versión de la app de stock en BTP (**inferido**: el segmento `~67339fe8…~` cambiaría) | 404 en el stock | `_SAP_STOCK_PATH` (copiarlo de las DevTools del portal) |
+| El agente del taller deja de subir (servidor apagado, sin internet, tarea deshabilitada) | `desactualizado: true` | `GET /dms/stock/estado` y el log de la tarea en el servidor |
+| Una actualización del DMS cambia `KardexTR` | El agente falla o el stock da distinto que la pantalla del DMS | Comparar la consulta del agente con la vista `Existencias` |
 
 ## Cómo re-investigar
 

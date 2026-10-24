@@ -9,6 +9,9 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | POST | `/match` | Texto libre → repuestos identificados + familias |
 | POST | `/epc` | Chasis + familias → números de pieza completos |
 | POST | `/cotizar` | **Endpoint principal:** texto libre + chasis → números de pieza |
+| PUT | `/dms/stock` | El agente del taller sube la foto completa del stock (con token) |
+| POST | `/dms/stock` | Números de pieza → stock del taller por depósito |
+| GET | `/dms/stock/estado` | Cuándo llegó la última foto del stock del taller |
 
 Ver documentación interactiva en http://localhost:8000/docs
 
@@ -71,7 +74,7 @@ npm run dev
 matcher-nissan/
 ├── CONTEXT.md               ← contexto del proyecto para el LLM
 ├── STANDARDS.md             ← estándares de desarrollo
-├── INTEGRACIONES.md         ← cómo funcionan EPC y SAP por dentro (hallazgos técnicos)
+├── INTEGRACIONES.md         ← cómo funcionan EPC, SAP y el DMS por dentro (hallazgos técnicos)
 ├── backend/
 │   ├── app/
 │   │   ├── core/config.py   ← configuración (pydantic-settings)
