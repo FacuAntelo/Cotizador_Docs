@@ -336,8 +336,15 @@ SUM(CASE WHEN Tipo = 'I' THEN Cantidad WHEN Tipo = 'E' THEN -Cantidad ELSE 0 END
   porque tarda **0,13 s** para todo el stock (230 mil movimientos) contra 0,9 s de la vista,
   y sólo necesita leer `KardexTR`.
 - Resultado: ~1.900 combinaciones repuesto/depósito con stock, ~5.800 unidades.
-- Depósitos: CENTRAL, RACK, DEPOSITO 3, PAJARERA, PICKING y GARANTIAS (vacío hoy; se excluye
-  por defecto). Las columnas de `Depositos` (`Garantia`, `Activo`, `Principal`) no los distinguen.
+- Depósitos: CENTRAL, RACK, DEPOSITO 3, PAJARERA, PICKING y GARANTIAS (vacío hoy). PICKING y
+  GARANTIAS no suman al stock que se muestra por decisión del taller, pero se guardan igual: el
+  vendedor los puede sumar desde la pantalla. Las columnas de `Depositos` (`Garantia`, `Activo`,
+  `Principal`) no los distinguen.
+- Ubicación dentro del depósito: sale de `UbicacionesRepuestos` (`Repuesto`, `Deposito`, `Ubicacion`),
+  una fila por repuesto y depósito (ej. `1520865F0E`: CENTRAL `D1B2H4A`, RACK `AA4`). El agente la une
+  con un LEFT JOIN y la manda como `ubicacion`; si no hay, queda vacía. El login `cotizador_ro`
+  tiene SELECT sobre `KardexTR` y `UbicacionesRepuestos`. `Inventario.Ubicacion` es una copia
+  de los conteos hasta 2021, no se usa.
   Hay movimientos con depósito vacío (7 repuestos, 18 unidades).
 - Reservas: el DMS las maneja como un depósito `RESERVA` (vista `StockDepositoReserva`), que en
   este taller no existe.
@@ -412,8 +419,10 @@ Sube siempre la foto completa, no las diferencias: si una subida falla, la sigui
 - Guarda la última foto en la base (`dms_stock`, por código normalizado —sin guiones ni
   espacios, en mayúsculas— y depósito) y registra cada subida en `dms_stock_uploads`. Cada
   consulta lee la base, sin copia en memoria: así funciona igual con varias instancias del backend.
-- Al recibir una foto descarta los depósitos excluidos y las existencias nulas o negativas, y
-  suma los depósitos repetidos de un mismo código.
+- Al recibir una foto descarta las existencias nulas o negativas y suma los depósitos repetidos
+  de un mismo código (se queda con la primera ubicación conocida). Guarda todos los depósitos: los
+  de `DMS_EXCLUDED_DEPOSITS` se marcan al responder (`incluido_por_defecto: false`) y no suman
+  a `disponible`.
 - La antigüedad se mide con el reloj del backend al recibir la foto, no con el del servidor del taller.
 - El router (`app/routers/dms.py`) exige `Authorization: Bearer <DMS_AGENT_TOKEN>` sólo en la
   subida; sin token configurado la subida responde 503.
@@ -443,7 +452,7 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 | `DMS_AGENT_TOKEN` | vacío | Token del agente del taller; vacío deshabilita la subida |
 | `DATABASE_URL` | `sqlite:///data/cotizador.db` | Base donde se guarda la foto del stock del taller |
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
-| `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS` | Depósitos que no cuentan como stock (separados por coma) |
+| `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS,PICKING` | Depósitos que no suman al stock que se muestra por defecto (separados por coma) |
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 
