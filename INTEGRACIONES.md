@@ -1,4 +1,4 @@
-# Integraciones EPC, SAP y DMS del taller — cómo funcionan por dentro
+# Integraciones EPC, SAP, DMS del taller y localizador de partes — cómo funcionan por dentro
 
 Registro técnico de lo que se descubrió al analizar y reescribir las integraciones con
 el EPC de Nissan (Microcat) y con el portal SAP de Nissan Argentina (octubre 2026).
@@ -371,6 +371,68 @@ SSL 3/TLS 1.0 por defecto, así que el agente tiene que forzar TLS 1.2.
 
 Sube siempre la foto completa, no las diferencias: si una subida falla, la siguiente corrige todo.
 
+---
+
+## Localizador de partes (Simetrical)
+
+El localizador de partes de la red Nissan Argentina es una app de Simetrical
+(`partesnar.simetrical.net`): dice qué concesionarios tienen un número de pieza y cuántas
+unidades. Es PHP con jQuery Mobile, sin API documentada. Lo de esta sección salió de leer el
+JavaScript de las páginas y de pedidos hechos desde el navegador con la sesión del usuario
+(octubre 2026). El login desde el backend se armó leyendo `login.js` y **todavía no se midió**.
+
+### Mapa
+
+| Qué | Valor |
+|---|---|
+| Login | `https://simetrical.net/` (portal de Simetrical, con varias apps) |
+| Localizador | `https://partesnar.simetrical.net/` (se entra con un link desde el portal, sin token) |
+| Sesión | Cookie `Simetrical` para todo `*.simetrical.net`, más `PHPSESSID` |
+| Sin sesión | Los pedidos al localizador redirigen al login de `simetrical.net` |
+
+### Login (de `login.js`)
+
+`POST https://simetrical.net/server/login.php`, formulario con `usu` (el mail) y `pass` (la
+contraseña **en base64**, nada más). Responde texto:
+
+- `{"login": true, "menu": "…"}`: listo; las cookies quedan en la respuesta.
+- `{"login": false}`: usuario o contraseña incorrectos.
+- `contrato`: la cuenta tiene que aceptar un contrato desde el navegador.
+
+### Búsqueda (medido)
+
+| Pedido | Qué hace | Tiempo |
+|---|---|---|
+| `POST include/buscarPieza.php` con `NumeroParte` y `cte=NAR` | Todas las sucursales con existencia, en una sola respuesta | **~0,34 s** (1520865F0E: 61 filas, 56 sucursales) |
+| `GET include/buscar.php?term=…` | Autocompletar: números que empiezan con el texto y su descripción | ~0,2 s |
+| `POST include/infopieza.php` con `NumeroParte` | Descripción, modelo y precio sugerido de **una** sucursal | ~0,2 s |
+| `POST include/session.php` con `Lat` y `Lon` | Guarda la ubicación del usuario: desde ahí `buscarPieza` ordena y trae `Distancia` | — |
+
+- El número tiene que ser **exacto y en mayúsculas**: `1520865f0e`, `15208-65F0E` o `1520865F0`
+  no traen nada. Las variantes con sufijo (`1520865F0EA`, `…EI`) son números aparte.
+- Sin existencias, el PHP imprime warnings (`ksort() expects parameter 1 to be array`) y
+  después `null`, con status 200.
+- Cada fila trae `id` (la sucursal), `Nombre` (`"NISSCAR <br /> Pilar"`), `Existencia`
+  (texto, `"83.0"`), `ClientIDAlpha` (el código de concesionario, el mismo de SAP: Antelo es
+  `232111`), `Estado`, `Ciudad`, `Direccion`, `Latitud`, `Longitud` y más datos de contacto.
+- Una sucursal aparece **una vez por depósito** con stock: Antelo vino con 38 y 84, igual que
+  CENTRAL y RACK en el DMS del taller. El total de la sucursal es la suma.
+
+### Datos mal cargados (medido)
+
+No sirven para agrupar ni para ordenar tal como vienen:
+
+- **Provincia**: Antelo (Villa Santa Rita) y Grandote (Av. Cabildo) figuran fuera de CABA y
+  Ciudadela (Tres de Febrero) adentro; Coronel Suárez figura en La Pampa; Catamarca y Jujuy
+  tienen la provincia cruzada; La Rioja y San Rafael dicen Buenos Aires. Muchas vienen vacías.
+- **Coordenadas**: Pilar, Junín, Sáenz Peña, Coronel Suárez y Cañada de Gómez vienen en 0,0;
+  General Pico tiene las de Bahía Blanca y Concordia unas cerca de Paraná.
+
+Por eso el backend agrupa y mide distancias con su propia tabla de sucursales
+(`app/services/locator_branches.py`, clave `id`), revisada a mano con los datos de arriba.
+
+---
+
 ## Cómo está implementado
 
 ### `app/services/epc_scraper.py`
@@ -431,6 +493,23 @@ Sube siempre la foto completa, no las diferencias: si una subida falla, la sigui
 - El router (`app/routers/dms.py`) exige `Authorization: Bearer <DMS_AGENT_TOKEN>` sólo en la
   subida; sin token configurado la subida responde 503.
 
+### `app/services/part_locator.py`
+
+- Sin navegador: un `httpx.AsyncClient` persistente. La sesión se abre en la primera consulta
+  (login + `GET /` del localizador) y, si vence, se re-loguea una vez. Como el login es un
+  solo POST, no hay keep-alive ni cookies guardadas en disco.
+- Un rechazo de credenciales frena los reintentos hasta reiniciar con credenciales nuevas;
+  Simetrical caído → 60 s sin reintentar (igual que SAP).
+- `group_by_province()`: suma los depósitos de cada sucursal, la ubica con `locator_branches.py`
+  y mide la distancia en línea recta desde `LOCALIZADOR_ORIGEN_LAT/LON`. Orden: CABA, Provincia
+  de Buenos Aires y después el resto de las provincias según su sucursal más cercana; adentro
+  de cada una, de la más cercana a la más lejana. Marca como `propio` la sucursal con
+  `ClientIDAlpha` igual a `SAP_DEALER_CODE`.
+- Una sucursal que no está en la tabla se ubica con la provincia y las coordenadas del sitio
+  (o queda al final de su provincia, sin distancia) y se avisa **una vez** en el log:
+  `Localizador: sucursales sin ubicar en locator_branches.py: …`.
+- No usa `session.php`: las distancias del sitio dependen de coordenadas mal cargadas.
+
 ### El agente (`Cotizador_BE/agente_dms/`)
 
 Instalación y operación: ver el `README.md` de esa carpeta.
@@ -463,6 +542,8 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
 | `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS,PICKING` | Depósitos que no suman al stock que se muestra por defecto (separados por coma) |
 | `DMS_IGNORED_DEPOSITS` | `MINOZZI` | Depósitos que no entran al sistema: no se guardan ni se muestran (separados por coma) |
+| `SIMETRICAL_USERNAME` / `SIMETRICAL_PASSWORD` | vacío | Cuenta de Simetrical para el localizador de partes; vacío lo deshabilita (503) |
+| `LOCALIZADOR_ORIGEN_LAT` / `LOCALIZADOR_ORIGEN_LON` | `-34.6193` / `-58.4788` | Desde dónde se miden las distancias del localizador (Antelo, Helguera 1150) |
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 
@@ -490,6 +571,8 @@ Qué puede romperse si Infomedia o Nissan cambian algo, y cómo se nota:
 | El agente del taller deja de subir (servidor apagado, sin internet, tarea deshabilitada) | `desactualizado: true` | `GET /dms/stock/estado` y el log de la tarea en el servidor |
 | Se copió un agente nuevo sin volver a correr el instalador | El log dice `sin padron de depositos (... SELECT permission was denied ...)` | Volver a correr `instalar_agente_dms.ps1` |
 | Una actualización del DMS cambia `KardexTR` | El agente falla o el stock da distinto que la pantalla del DMS | Comparar la consulta del agente con la vista `Existencias` |
+| Abre una sucursal nueva en la red | Aviso `sucursales sin ubicar` en el log; puede quedar en la provincia equivocada | Sumarla a `locator_branches.py` |
+| Simetrical cambia el login o el localizador | `PartLocatorError` / "el localizador no abrió después del login" | `login.js` del portal y el JavaScript de la página del localizador |
 
 ## Cómo re-investigar
 
@@ -506,6 +589,10 @@ Qué puede romperse si Infomedia o Nissan cambian algo, y cómo se nota:
 - **Medir sin caché**: familias que no se hayan pedido en esa pestaña (ver la caché de la app).
 - **Medir inactividad**: una sesión por cada intervalo a probar, chequeada **una sola vez**,
   porque el propio chequeo cuenta como actividad.
+- **Localizador**: toda la lógica está en el HTML de `partesnar.simetrical.net` (un script
+  inline, sin bundle) y el login en `https://simetrical.net/js/login.js`. Con la sesión abierta
+  en el navegador, `fetch('include/buscarPieza.php', …)` desde la consola de esa pestaña
+  devuelve el JSON crudo.
 - **No** probar con contraseñas incorrectas en SAP (bloqueo de cuenta), **no** hacer GET al path
   de stock (genera errores en CPI) y tener en cuenta que cada login del EPC le saca la licencia
   al backend que esté corriendo.
