@@ -339,12 +339,15 @@ SUM(CASE WHEN Tipo = 'I' THEN Cantidad WHEN Tipo = 'E' THEN -Cantidad ELSE 0 END
 - Depósitos: CENTRAL, RACK, DEPOSITO 3, PAJARERA, PICKING y GARANTIAS (vacío hoy). PICKING y
   GARANTIAS no suman al stock que se muestra por decisión del taller, pero se guardan igual: el
   vendedor los puede sumar desde la pantalla. Las columnas de `Depositos` (`Garantia`, `Activo`,
-  `Principal`) no los distinguen.
+  `Principal`) no los distinguen. MINOZZI no entra al sistema, por pedido del taller: el
+  backend lo descarta al recibir la foto (`DMS_IGNORED_DEPOSITS`). Hoy no está en `Depositos`
+  ni tiene stock; solo aparece en `UbicacionesRepuestos`.
 - Ubicación dentro del depósito: sale de `UbicacionesRepuestos` (`Repuesto`, `Deposito`, `Ubicacion`),
   una fila por repuesto y depósito (ej. `1520865F0E`: CENTRAL `D1B2H4A`, RACK `AA4`). El agente la une
   con un LEFT JOIN y la manda como `ubicacion`; si no hay, queda vacía. El login `cotizador_ro`
-  tiene SELECT sobre `KardexTR` y `UbicacionesRepuestos`. `Inventario.Ubicacion` es una copia
-  de los conteos hasta 2021, no se usa.
+  tiene SELECT sobre `KardexTR`, `UbicacionesRepuestos` y `Depositos` (padrón). Confirmado con
+  `diagnostico_ubicaciones.ps1` (24 y 25/10/2026). Hay ubicaciones en depósitos sin stock (ej.
+  MINOZZI, `TALLER`). `Inventario.Ubicacion` es una copia de los conteos hasta 2021, no se usa.
   Hay movimientos con depósito vacío (7 repuestos, 18 unidades).
 - Reservas: el DMS las maneja como un depósito `RESERVA` (vista `StockDepositoReserva`), que en
   este taller no existe.
@@ -419,10 +422,11 @@ Sube siempre la foto completa, no las diferencias: si una subida falla, la sigui
 - Guarda la última foto en la base (`dms_stock`, por código normalizado —sin guiones ni
   espacios, en mayúsculas— y depósito) y registra cada subida en `dms_stock_uploads`. Cada
   consulta lee la base, sin copia en memoria: así funciona igual con varias instancias del backend.
-- Al recibir una foto descarta las existencias nulas o negativas y suma los depósitos repetidos
-  de un mismo código (se queda con la primera ubicación conocida). Guarda todos los depósitos: los
-  de `DMS_EXCLUDED_DEPOSITS` se marcan al responder (`incluido_por_defecto: false`) y no suman
-  a `disponible`.
+- Al recibir una foto descarta las existencias nulas o negativas y los depósitos de
+  `DMS_IGNORED_DEPOSITS` (también del padrón), y suma los depósitos repetidos de un mismo código
+  (se queda con la primera ubicación conocida). Guarda los demás depósitos: los de
+  `DMS_EXCLUDED_DEPOSITS` se marcan al responder (`incluido_por_defecto: false`) y no suman a
+  `disponible`.
 - La antigüedad se mide con el reloj del backend al recibir la foto, no con el del servidor del taller.
 - El router (`app/routers/dms.py`) exige `Authorization: Bearer <DMS_AGENT_TOKEN>` sólo en la
   subida; sin token configurado la subida responde 503.
@@ -431,16 +435,21 @@ Sube siempre la foto completa, no las diferencias: si una subida falla, la sigui
 
 Instalación y operación: ver el `README.md` de esa carpeta.
 
-- `instalar_agente_dms.ps1` crea el login `cotizador_ro` con `SELECT` sobre `KardexTR` y `DENY` de
-  escritura sobre el esquema `dbo` (le gana a cualquier permiso del rol `public`), y verifica con
-  ese login que no pueda escribir antes de guardar la configuración. La contraseña es aleatoria y
+- `instalar_agente_dms.ps1` crea el login `cotizador_ro` con `SELECT` sobre `KardexTR`,
+  `UbicacionesRepuestos` y `Depositos` y `DENY` de escritura sobre el esquema `dbo` (le gana a
+  cualquier permiso del rol `public`), y verifica con ese login que lea esas tablas y no pueda
+  escribir antes de guardar la configuración. Para actualizar el agente hay que volver a correr el
+  instalador, que es el que da los permisos. La contraseña es aleatoria y
   queda en `agente.config.json`, que sólo pueden leer Administradores y SYSTEM.
 - La tarea programada corre como SYSTEM cada 5 minutos (disparador diario que se repite, porque la
   repetición "indefinida" falla en algunas versiones de Windows), no arranca otra corrida si la
   anterior sigue y corta a los 4 minutos.
 - `agente_stock_dms.ps1` fuerza TLS 1.2, sube la foto en un solo `PUT` (~2.000 filas, menos de
   100 ms medido contra un backend local) y deja una línea por corrida en `logs\`. Con `-Prueba`
-  guarda la foto en `stock_prueba.json` sin subirla.
+  guarda la foto en `stock_prueba.json` sin subirla. Si no puede leer `Depositos`, sube el stock
+  igual sin `depositos` (el backend conserva el padrón anterior) y lo anota en el log.
+- Probado con SQL Server 2012 (LocalDB 11.0, la misma versión del taller) y tablas con las columnas
+  del diagnóstico: instalador, prueba y subida a un backend local.
 
 ### Configuración (`.env`)
 
@@ -453,6 +462,7 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 | `DATABASE_URL` | `sqlite:///data/cotizador.db` | Base donde se guarda la foto del stock del taller |
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
 | `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS,PICKING` | Depósitos que no suman al stock que se muestra por defecto (separados por coma) |
+| `DMS_IGNORED_DEPOSITS` | `MINOZZI` | Depósitos que no entran al sistema: no se guardan ni se muestran (separados por coma) |
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 
@@ -478,6 +488,7 @@ Qué puede romperse si Infomedia o Nissan cambian algo, y cómo se nota:
 | Formulario de IAS | `SAPAuthError` o "SAP no completó el login a tiempo" | selectores en `sap_stock.py` |
 | Nueva versión de la app de stock en BTP (**inferido**: el segmento `~67339fe8…~` cambiaría) | 404 en el stock | `_SAP_STOCK_PATH` (copiarlo de las DevTools del portal) |
 | El agente del taller deja de subir (servidor apagado, sin internet, tarea deshabilitada) | `desactualizado: true` | `GET /dms/stock/estado` y el log de la tarea en el servidor |
+| Se copió un agente nuevo sin volver a correr el instalador | El log dice `sin padron de depositos (... SELECT permission was denied ...)` | Volver a correr `instalar_agente_dms.ps1` |
 | Una actualización del DMS cambia `KardexTR` | El agente falla o el stock da distinto que la pantalla del DMS | Comparar la consulta del agente con la vista `Existencias` |
 
 ## Cómo re-investigar
