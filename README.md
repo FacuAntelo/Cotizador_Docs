@@ -12,6 +12,12 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | PUT | `/dms/stock` | El agente del taller sube la foto completa del stock (con token) |
 | POST | `/dms/stock` | Números de pieza → stock del taller por depósito |
 | GET | `/dms/stock/estado` | Cuándo llegó la última foto del stock del taller |
+| GET | `/presupuestos/siguiente-numero` | Número que le toca al próximo presupuesto |
+| GET | `/presupuestos` | Presupuestos guardados (`buscar` por número, cliente, teléfono, vehículo, patente o VIN) |
+| GET | `/presupuestos/{numero}` | Un presupuesto guardado, con sus renglones |
+| POST | `/presupuestos` | Guardar un presupuesto nuevo (sin número toma el siguiente; 409 si el número existe) |
+| PUT | `/presupuestos/{numero}` | Actualizar un presupuesto guardado |
+| GET / PUT | `/presupuestos/concesionario` | Datos y logo del concesionario que encabezan los presupuestos |
 
 Ver documentación interactiva en http://localhost:8000/docs
 
