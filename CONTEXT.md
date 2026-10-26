@@ -163,6 +163,61 @@ Reglas:
 
 La pantalla **Presupuestos** (`/presupuestos`) busca los guardados (por número, cliente, teléfono, vehículo, patente o VIN) y los reabre para editarlos o volver a descargar el PDF; también arranca uno en blanco. Código: `Cotizador_FE/src/features/estimate/` y `Cotizador_BE/app/routers/estimates.py`.
 
+### 3f. Generador de pedidos y abastecimiento por ítem
+
+En el panel compartido por Cotizador y Presupuestos, **Aceptado** aparece cuando el presupuesto
+está guardado. Después de marcar la aceptación se habilita **Generar pedido**, que abre una vista
+previa y no realiza ninguna operación en el portal de Nissan.
+
+La vista tiene tres grupos: **Repuestos a pedir**, **Excluidos por diferidos** y **Cubiertos por
+stock**. Se consulta la matriz de reemplazos vigente hacia adelante, los costos PNC sin IVA de la
+lista Nissan, el stock de planta y la foto del DMS. Se elige el número compatible de menor costo
+con cantidad suficiente en planta. El costo cero de la lista se trata como faltante; si hay
+varios costos distintos para un mismo código, no se elige uno sin revisión. Los casos sin costo,
+sin número o sin disponibilidad confirmada también se explican entre los excluidos.
+
+El stock del taller usa los depósitos incluidos por defecto. PICKING nunca cubre este pedido:
+se informa en notas, incluso si el número es un compatible. Se muestran existencias del número
+cotizado y de sus reemplazos, con detalle desplegable por depósito y ubicación. Si el stock
+alcanza parcialmente, se propone solo el faltante. Las existencias del taller y de planta se
+reparten entre renglones repetidos para no usarlas dos veces en una misma propuesta. Las compras,
+pedidos, préstamos y separaciones ya registrados se descuentan del faltante.
+
+En cada grupo se pueden **incorporar** excluidos o **quitar** propuestos: permanecen visibles,
+tachados, para deshacer. Número compatible, cantidad y costo son editables. Se muestran costos
+unitarios y subtotales sin/con IVA y total del pedido. Los diferidos tienen la misma lupa del
+localizador de la red. Si el stock alcanza para todos, se informa y no se puede confirmar sin
+incorporar expresamente un excluido. Sin foto del taller no se prepara una propuesta automática;
+un SAP caído se informa como disponibilidad desconocida, nunca como stock cero confirmado.
+
+**Confirmar y descargar Excel** guarda una exportación inmutable antes de descargarla. La hoja
+Pedido contiene únicamente **Número de pieza** y **Cantidad** (encabezados y datos); los códigos
+son texto para conservar ceros iniciales y los repetidos se agrupan sumando cantidades. Los costos
+quedan guardados en el sistema, no en el Excel. Se conserva exactamente la selección del usuario;
+los cambios manuales de cantidad no redistribuyen las recomendaciones de los demás renglones.
+
+Después de generar aparece **Excel generado · falta registrar Nº de pedido** con fecha y número
+para completar después de cargar el archivo en Nissan. Se puede volver a descargar o anular si
+no se cargó; mientras está pendiente no se genera otro para el mismo presupuesto. Generar el
+archivo no marca los ítems como pedidos: eso ocurre al registrar el número. La exportación usa
+un identificador de reintento y las mutaciones comparan la revisión del presupuesto, evitando
+duplicados y rechazos silenciosos cuando trabajan dos operadores.
+
+**Seguimiento por ítem** muestra cantidades que faltan conseguir y separar. **Registrar estado**
+permite cantidades parciales como **Pedido a Nissan**, **Separado del stock**, **Comprado a
+concesionario** o **Préstamo de concesionario**. Una compra exige costo unitario con IVA; puede
+guardarse concesionario y comprobante. **Marcar separado** agrega su fecha sin borrar el origen,
+la referencia ni el costo: se ve, por ejemplo, comprado y luego separado. **Anular registro**
+conserva el historial y vuelve a liberar las unidades para conseguirlas. Estos registros no
+escriben movimientos ni reservas en el DMS.
+
+Los renglones del presupuesto conservan su ID al guardar y reordenar. Si un ítem tiene historial
+de pedidos o abastecimiento no se permite borrarlo ni cambiar su número o cantidad; se puede
+editar su descripción y precio. Una necesidad adicional se agrega como otro renglón.
+Migración 0012: aceptación en estimates y tablas estimate_orders / estimate_supplies.
+Código: BE app/{routers,database,services,schemas}/orders.py, app/models/orders.py;
+FE src/features/orders/ y src/api/orders.ts.
+
 ### 4. Cotizador unificado — `POST /cotizar`
 
 Endpoint principal. Una sola llamada desde texto libre a números de pieza completos.
@@ -308,6 +363,8 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | `estimates` | Presupuestos formales: número (único), fecha, validez, cliente, datos del concesionario al emitirlo y total con IVA |
 | `estimate_lines` | Renglones de cada presupuesto, en orden, con el precio unitario con IVA y la disponibilidad |
 | `dealer_profile` | Una fila: datos y logo del concesionario para los presupuestos nuevos |
+| `estimate_orders` | Excel confirmados, contenido y costo congelados, número de pedido y anulaciones |
+| `estimate_supplies` | Cantidades conseguidas por ítem, origen, costo con IVA, fecha de separación e historial |
 
 Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
 
