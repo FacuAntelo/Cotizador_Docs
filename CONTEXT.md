@@ -143,6 +143,26 @@ En el front, cada línea de la columna **Stock en planta** tiene una lupa que ab
 }
 ```
 
+### 3e. Presupuesto formal — `/presupuestos`
+
+En la tabla de **Repuestos identificados** cada fila tiene una casilla, y todas vienen tildadas: el vendedor destilda lo que no quiere. Lo que se suma después también entra tildado (un repuesto que se valida con el asesor IA, las piezas elegidas de un kit). Con otra cotización vuelve a estar todo tildado. Con los repuestos tildados, el vendedor puede:
+
+- **Copiar para WhatsApp**: un renglón por repuesto con descripción, precio final con IVA y disponibilidad (y el total, si se tilda "Con total").
+- **Generar presupuesto**: abre a la derecha la hoja del presupuesto formal, copiada de la planilla del concesionario: logo del concesionario a la izquierda, número en el centro, logo Nissan a la derecha, franja con el nombre del concesionario y "Datos del cliente", dirección / CUIT / teléfono / e-mail, vehículo / VIN / nombre / patente / teléfono del cliente, fecha y validez, la tabla (descripción, unidades, precio unitario sin IVA, subtotal y total con IVA) y los totales. Con la hoja abierta, tildar o destildar una fila la suma o la saca, y la hoja sigue a la tabla: si en la fila se elige otro número (⇄ o el detalle del precio), se cambia la cantidad o el criterio de cotización, el renglón toma el número, el precio, el sugerido y la disponibilidad nuevos. Con el mismo número se respeta el precio que haya ajustado el vendedor. Los repuestos que entran tildados con la hoja abierta (validados, piezas de un kit o los de una cotización nueva) se suman como renglones, y un renglón que se armó antes de que llegaran el precio o el stock los toma cuando llegan.
+
+Todo se edita sobre la hoja: textos, cantidades, precio unitario sin IVA, total con IVA del renglón y el total general (que reparte el cambio entre los renglones en proporción). Al tocar un renglón aparece una fila de ajustes: −10 / −5 / +5 / +10 %, "De lista" (precio de la lista del concesionario), "Sugerido Nissan" (SUG con IVA), disponibilidad y ocultar, y una X roja en el margen izquierdo del renglón que lo saca del presupuesto (y lo destilda en la tabla). "Ocultar" cierra la fila hasta que se vuelve a tocar un renglón. Arriba de la hoja están los ajustes para todos los precios, un porcentaje libre y "Precios de lista" / "Sugeridos Nissan". La opción "Incluir N.º de pieza" agrega la columna. Se puede agregar un ítem a mano (ej. mano de obra) con el botón o con **Enter** en cualquier campo de un renglón, que agrega uno vacío debajo y deja el cursor en su descripción, como en una planilla. **Backspace** en la descripción de un renglón que no tiene nada (sin descripción, número ni precio) lo borra y deja el cursor al final del anterior. En los datos del cliente o del concesionario, Enter no agrega nada. Los renglones que quedan vacíos (sin descripción, número ni precio) se descartan solos al guardar. El precio de lista y el sugerido de cada renglón se guardan con el presupuesto, así siguen disponibles al reabrirlo. Si falta algo para guardar (hoja vacía, ítems sin descripción), aparece un aviso en el centro de la pantalla y los ítems incompletos quedan marcados en rojo.
+
+Reglas:
+
+- El precio que se guarda y se edita es el **unitario con IVA** (2 decimales); el sin IVA se calcula dividiendo por 1,21. Así un total redondo con IVA (ej. $ 2.181.600) da el mismo unitario que la planilla ($ 1.802.975,21). El subtotal suma la columna sin IVA y el total la columna con IVA.
+- **Disponibilidad**: "En stock" si el taller tiene la cantidad pedida (con los depósitos tildados), "Disponible en planta" si la tiene SAP, y **diferido** si no alcanza en ninguno de los dos. Si el taller lo tiene, no es diferido aunque SAP lo marque así. Diferido se imprime "(DIFERIDO)" en rojo junto a la descripción. Se puede cambiar a mano en cada renglón.
+- **Validez**: fin de mes por defecto, o de 1 a 4 semanas; se imprime con la fecha de vencimiento.
+- **Número**: el último guardado más uno; se puede cambiar hasta guardarlo (para seguir la numeración de la planilla). Si al guardar otro vendedor ya tomó el número propuesto, la base asigna el siguiente; si el número lo escribió el vendedor y existe, responde 409.
+- **Guardar y PDF** guarda (o actualiza) el presupuesto y descarga "Presupuesto 008709 - Cliente.pdf" en A4. Para que no se pueda copiar ni editar el texto, cada página es una **imagen** de la hoja (`html-to-image`, a ~290 ppp) y el PDF va cifrado con permiso de solo imprimir (`jspdf`; se abre sin contraseña). Las páginas se cortan entre renglones. Es una traba para el uso normal, no una garantía: una imagen se puede retocar con un editor de imágenes. Código: `Cotizador_FE/src/features/estimate/estimatePdf.ts`.
+- Los datos del concesionario que se usen al guardar quedan como los de los próximos presupuestos (`PUT /presupuestos/concesionario`). El logo se cambia haciendo clic en él (PNG, JPG, WebP o SVG de hasta 1 MB) y se guarda como data URL. Sin datos guardados, el front usa los de la planilla y el logo recortado de ella (`Cotizador_FE/src/features/estimate/assets/`), que conviene reemplazar por el original.
+
+La pantalla **Presupuestos** (`/presupuestos`) busca los guardados (por número, cliente, teléfono, vehículo, patente o VIN) y los reabre para editarlos o volver a descargar el PDF; también arranca uno en blanco. Código: `Cotizador_FE/src/features/estimate/` y `Cotizador_BE/app/routers/estimates.py`.
+
 ### 4. Cotizador unificado — `POST /cotizar`
 
 Endpoint principal. Una sola llamada desde texto libre a números de pieza completos.
@@ -285,6 +305,9 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. Antes vivían en `data/catalogo_candidatos.json`: la migración inicial las importa una vez si encuentra el archivo |
 | `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
 | `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades |
+| `estimates` | Presupuestos formales: número (único), fecha, validez, cliente, datos del concesionario al emitirlo y total con IVA |
+| `estimate_lines` | Renglones de cada presupuesto, en orden, con el precio unitario con IVA y la disponibilidad |
+| `dealer_profile` | Una fila: datos y logo del concesionario para los presupuestos nuevos |
 
 Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
 
