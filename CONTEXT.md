@@ -118,6 +118,31 @@ En el front, la columna **Stock** de la tabla (y el bloque "Stock" de las sugere
 }
 ```
 
+### 3d. Localizador de partes de la red — `GET /localizador/{numero_parte}`
+
+> Detalle de Simetrical (login, endpoints, datos mal cargados): ver `INTEGRACIONES.md`.
+
+Qué concesionarios de la red Nissan tienen un número de pieza, según el localizador de partes de Simetrical. El backend se loguea con httpx (sin navegador) en la primera consulta y pide todas las sucursales en un solo POST (~0,3 s). Devuelve el total de la red y las sucursales agrupadas por provincia: **CABA** primero, después **Provincia de Buenos Aires** y luego el resto de las provincias, siempre de la más cercana a la más lejana al concesionario propio (`LOCALIZADOR_ORIGEN_LAT/LON`). La provincia y la ubicación de cada sucursal salen de una tabla propia (`app/services/locator_branches.py`), porque el sitio las trae mal cargadas. Una sucursal con stock en varios depósitos se suma. Sin `SIMETRICAL_USERNAME` / `SIMETRICAL_PASSWORD` responde 503.
+
+En el front, cada línea de la columna **Stock en planta** tiene una lupa que abre un popover con el total en red y las provincias: CABA y Provincia de Buenos Aires abiertas con cada concesionario, el resto plegadas con su total y la distancia a la más cercana. El propio aparece marcado como "Tu concesionario". La consulta se hace al abrir la lupa y se reutiliza 5 minutos. Como la lupa va en cada número, aparece también en cada alternativa compatible al expandir ⇄. Código: `Cotizador_FE/src/features/part-locator/`.
+
+```json
+// GET /localizador/1520865F0E (datos del 2026-10-25, recortado)
+{
+  "numero_parte": "1520865F0E",
+  "total_red": 6076,
+  "provincias": [
+    { "provincia": "CABA", "total": 1306,
+      "concesionarios": [
+        { "nombre": "ANTELO", "sucursal": null, "existencia": 122, "distancia_km": 0, "propio": true },
+        { "nombre": "NISSAN CAPITAL", "sucursal": "Villa Luro", "existencia": 299, "distancia_km": 3, "propio": false }
+      ] },
+    { "provincia": "Provincia de Buenos Aires", "total": 1507, "concesionarios": ["…"] },
+    { "provincia": "Santa Fe", "total": 1207, "concesionarios": ["…"] }
+  ]
+}
+```
+
 ### 4. Cotizador unificado — `POST /cotizar`
 
 Endpoint principal. Una sola llamada desde texto libre a números de pieza completos.
@@ -245,6 +270,8 @@ EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false          # true para ver el browser (debug)
 DATABASE_URL=sqlite:///data/cotizador.db   # default; Postgres más adelante
+SIMETRICAL_USERNAME=...    # localizador de partes de la red
+SIMETRICAL_PASSWORD=...
 ```
 
 ---
