@@ -19,14 +19,14 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | PUT | `/presupuestos/{numero}` | Actualizar un presupuesto guardado |
 | GET / PUT | `/presupuestos/concesionario` | Datos y logo del concesionario que encabezan los presupuestos |
 | POST | `/presupuestos/{numero}/aceptado` | Aceptar el presupuesto guardado para habilitar pedidos |
-| GET | `/presupuestos/{numero}/pedidos/vista-previa` | Proponer compatibles por costo Nissan, planta y stock del taller |
-| POST | `/presupuestos/{numero}/pedidos` | Confirmar y guardar el contenido del Excel |
+| GET | `/presupuestos/{numero}/pedidos/vista-previa` | Proponer compatibles por costo Nissan, planta y stock del taller, con el motivo de cada descarte |
+| POST | `/presupuestos/{numero}/pedidos` | Confirmar el Excel y dejar para separar lo del stock del taller (null si no hay nada para pedir) |
 | GET | `/presupuestos/{numero}/pedidos/{pedido_id}/excel` | Descargar el Excel de número de pieza y cantidad |
 | POST | `/presupuestos/{numero}/pedidos/{pedido_id}/registrar` | Registrar fecha y número asignado por Nissan |
 | POST | `/presupuestos/{numero}/pedidos/{pedido_id}/anular` | Anular un Excel que no se cargó en Nissan |
-| GET / POST | `/presupuestos/{numero}/abastecimiento` | Consultar historial o registrar pedido, compra, préstamo o separación |
-| POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/separar` | Separar unidades conservando su origen y costo |
-| POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/anular` | Corregir una adquisición sin borrar su historial |
+| GET | `/presupuestos/{numero}/abastecimiento` | Estados por ítem (pedido, para separar, separado) e historial |
+| POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/estado` | Cambiar el estado conservando origen, Nº de pedido y costo |
+| POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/anular` | Anular (por ejemplo, lo que no estaba en stock) sin borrar el historial |
 
 Ver documentación interactiva en http://localhost:8000/docs
 
