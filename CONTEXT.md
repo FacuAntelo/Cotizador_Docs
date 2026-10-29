@@ -164,9 +164,15 @@ Reglas:
 **Mano de obra y chapa y pintura.** Debajo de la tabla, junto a "+ Agregar ítem", hay dos botones:
 
 - **+ Agregar MO**: suma un renglón "Mano de obra" de 1 hora al **precio por hora del taller**. Ese precio (sin IVA) se carga en el campo "Hora de MO sin IVA" de la misma fila y queda guardado con los datos del concesionario (`dealer_profile.labor_hourly_rate`, `precio_hora_mano_obra` en `PUT /presupuestos/concesionario`). Sin precio cargado, el renglón entra en cero. Se pueden agregar varios.
-- **+ Agregar chapa y pintura**: suma las tres líneas que falten: **Días de chapa**, **Paños** y el **detalle de chapa y pintura**. Los paños se recomiendan según los repuestos del presupuesto (uno por cada pieza de carrocería que se reemplaza: paragolpes, guardabarros, puerta, capot, baúl/portón, techo, zócalo, aleta, tapa de combustible; no cuentan molduras, soportes, ópticas ni herrajes) y el detalle viene precargado con "Reemplazo y pintado <repuesto>" por cada una. Los días arrancan en 0 y el precio de días y paños se carga a mano. El detalle se edita libremente (ej. "reparación guardabarros del der.") y **va siempre al final de la tabla, sin cantidad ni precio**. Código de las recomendaciones: `Cotizador_FE/src/features/estimate/bodywork.ts`.
+- **+ Agregar chapa y pintura** (**Editar chapa y pintura** si ya hay): abre un pop up donde el repuestero carga cada tarea con su **descripción**, sus **paños** y sus **días de chapa** (con decimales, "0,5"). La primera vez propone "Reemplazo y pintado <repuesto>" con un paño por unidad para cada pieza de carrocería que se reemplaza (paragolpes, guardabarros, puerta, capot, baúl/portón, techo, zócalo, aleta, tapa de combustible; no cuentan molduras, soportes, ópticas ni herrajes). Enter en una descripción agrega una tarea debajo. Al confirmar, la hoja muestra:
+  - **Paños (p)** con la suma de los paños y **Días de chapa (c)** con la suma de los días. El precio unitario de cada uno se carga en la hoja y se conserva al volver a editar; lo que suma cero no aparece. Esas cantidades son la suma de las tareas: tocarlas abre el pop up.
+  - Al final, sin cantidad ni precio, **Detalle chapa y pintura**: una tarea por línea con su aclaración, ej. "Reemplazo y pintado paragolpes delantero (2p, 1c)", "Reparación guardabarros dd (1p, 1c)", "Pintado cacha der (0,5p)". La casilla "Mostrar los paños y días de cada tarea" oculta las aclaraciones (y los renglones pasan a llamarse "Paños" y "Días de chapa").
 
-La cantidad de mano de obra, días de chapa y paños admite **decimales** (hasta dos, "2,5"); la de los repuestos sigue siendo entera. Cada renglón guarda su tipo (`tipo`: `repuesto`, `mano_obra`, `dias_chapa`, `panos`, `detalle_chapa_pintura`; migración `0013`). Los pedidos y el seguimiento de abastecimiento sólo consideran los renglones de tipo `repuesto`.
+  Las tareas se guardan con el presupuesto (`chapa_pintura`, columna `estimates.bodywork`), así el pop up se reabre con lo cargado. Quitar el detalle de la hoja, o "Quitar chapa y pintura" en el pop up, borra las tareas. Un detalle armado antes del pop up se abre como tareas sin paños ni días. Código: `Cotizador_FE/src/features/estimate/bodywork.ts` y `BodyworkDialog.tsx`.
+
+La cantidad de mano de obra, días de chapa y paños admite **decimales** (hasta dos, "2,5"); la de los repuestos sigue siendo entera. Cada renglón guarda su tipo (`tipo`: `repuesto`, `mano_obra`, `dias_chapa`, `panos`, `detalle_chapa_pintura`; migración `0014`). Los pedidos y el seguimiento de abastecimiento sólo consideran los renglones de tipo `repuesto`.
+
+**Compañía de seguros.** En los datos del cliente, **Seguro** es un desplegable: **Particular** (sin compañía) o una de las compañías cargadas. La lista arranca vacía: "+ Agregar compañía…" escribe una nueva, que queda para los próximos presupuestos y no se repite con otras mayúsculas (`GET` / `POST /aseguradoras`, tabla `insurers`). Se imprime en la hoja y el PDF ("Seguro: Sancor Seguros" o "Particular") y se ve en la lista de guardados.
 
 La pantalla **Presupuestos** (`/presupuestos`) busca los guardados (por número, cliente, teléfono, vehículo, patente o VIN) y los reabre para editarlos o volver a descargar el PDF; también arranca uno en blanco. Código: `Cotizador_FE/src/features/estimate/` y `Cotizador_BE/app/routers/estimates.py`.
 
@@ -225,18 +231,55 @@ se ve cada ítem con sus estados y el repuestero los cambia a medida que llegan:
 | Para separar | Llegó lo pedido (guarda la fecha de llegada) o está en el stock del taller |
 | Separado | Apartado para el cliente; guarda la fecha. Es lo único que suma al porcentaje |
 
-Los estados no se cargan a mano: nacen del pedido. Se pueden volver atrás si hubo un error (lo
-pedido puede volver a Pedido; lo del stock, a Para separar). **No está en stock** anula lo que el
-DMS mostraba pero no se encontró, y vuelve a quedar sin pedir para el próximo pedido. Nada de esto
-escribe movimientos ni reservas en el DMS.
+Los estados nacen del pedido, pero el desplegable de cada ítem **siempre** deja cambiarlo:
+
+- Lo **Sin pedir** pasa directo a cualquier estado (`POST /presupuestos/{n}/abastecimiento`):
+  Pedido queda como pedido por fuera del Excel ("Sin Nº de Nissan" y la fecha); Para separar y
+  Separado, como stock del taller.
+- Un registro pasa a cualquier estado (lo del stock que no estaba y se pidió pasa a Pedido) o
+  vuelve a **Sin pedir**: se anula y entra en el próximo pedido (reemplaza a "No está en stock").
+- Lo que está en un Excel sin registrar cambia de estado después de registrar el número.
+
+Nada de esto escribe movimientos ni reservas en el DMS.
+
+**Aceptación con seguro.** Si el presupuesto tiene compañía, **Aceptado** abre un cuestionario de
+tres pasos; cada uno se puede omitir y lo omitido queda "sin indicar":
+
+1. **Franquicia**: con franquicia (y el monto) o sin franquicia.
+2. **¿Lleva inspección final?** Sí o no.
+3. **¿Se aceptó el pago completo como figura en el presupuesto?** Sí completa repuestos y mano de
+   obra con IVA (la mano de obra incluye paños y días de chapa) y el **total a abonar por la
+   compañía** = repuestos + mano de obra − franquicia. No lista todos los ítems para marcar lo
+   que no dio el seguro: quedan **excluidos** y los montos se recalculan sin ellos (se pueden
+   corregir a mano).
+
+Sin compañía, Aceptado acepta directo, como antes. Al aceptar se habilita la segunda pestaña,
+**Aceptación** (la primera es **Presupuesto**), donde todo se edita y se guarda al momento:
+franquicia (sin indicar / con franquicia y monto / sin franquicia), inspección final (sin indicar /
+sí / no), **orden del seguro** (un PDF de hasta 10 MB; subir otro la reemplaza), **pago de la
+compañía** (repuestos, mano de obra y total; el total se calcula solo si están los dos, si no se
+escribe a mano; "Completar con lo del presupuesto" los llena sin los excluidos) y **Excluidos**
+("Se aceptó el presupuesto completo" si no hay; si no, la lista con **Revertir** y **Agregar
+excluidos**). En un presupuesto particular solo aparece Excluidos.
+
+En la pestaña Presupuesto, arriba de la hoja y fuera del PDF, se ve **Tiene inspección final** en
+rojo, **Inspección final sin confirmar** en amarillo (o "Sin inspección final"), la franquicia y
+cuántos ítems se excluyeron. Los excluidos salen **tachados** en la hoja y en el PDF; el total del
+presupuesto no cambia. Un repuesto excluido no se pide ni cuenta para la Completitud (se informa
+aparte); para excluir uno que ya está pedido o apartado, primero hay que pasarlo a Sin pedir.
+Endpoints: `GET` / `PUT /presupuestos/{n}/aceptacion`, `POST` / `GET` / `DELETE
+/presupuestos/{n}/orden-seguro`; `POST /presupuestos/{n}/aceptado` recibe además `aceptacion`
+con las respuestas del cuestionario.
 
 Los renglones del presupuesto conservan su ID al guardar y reordenar. Si un ítem tiene historial
 de pedidos o abastecimiento no se permite borrarlo ni cambiar su número o cantidad; se puede
 editar su descripción y precio. Una necesidad adicional se agrega como otro renglón.
-Migraciones 0012 (aceptación y tablas estimate_orders / estimate_supplies) y 0013 (fecha de
-llegada de lo pedido). Los registros cargados a mano antes (comprado, préstamo, separado) se
-siguen mostrando. Código: BE app/{routers,database,services,schemas}/orders.py,
-app/models/orders.py; FE src/features/orders/ y src/api/orders.ts.
+Migraciones 0012 (aceptación y tablas estimate_orders / estimate_supplies), 0013 (fecha de
+llegada de lo pedido) y 0015 (compañías, tareas de chapa y pintura, lo acordado al aceptar,
+excluidos y orden del seguro). Los registros cargados a mano antes (comprado, préstamo, separado)
+se siguen mostrando. Código: BE app/{routers,database,services,schemas}/{orders,acceptance}.py,
+app/models/orders.py; FE src/features/orders/, src/features/acceptance/, src/api/orders.ts y
+src/api/acceptance.ts.
 
 ### 4. Cotizador unificado — `POST /cotizar`
 
@@ -380,8 +423,10 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. Antes vivían en `data/catalogo_candidatos.json`: la migración inicial las importa una vez si encuentra el archivo |
 | `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
 | `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades |
-| `estimates` | Presupuestos formales: número (único), fecha, validez, cliente, datos del concesionario al emitirlo y total con IVA |
-| `estimate_lines` | Renglones de cada presupuesto, en orden, con el precio unitario con IVA y la disponibilidad |
+| `estimates` | Presupuestos formales: número (único), fecha, validez, cliente, datos del concesionario al emitirlo, total con IVA, compañía de seguros, tareas de chapa y pintura y lo acordado al aceptar (franquicia, inspección final, pago del seguro) |
+| `estimate_lines` | Renglones de cada presupuesto, en orden, con el precio unitario con IVA, la disponibilidad y si quedó excluido al aceptar |
+| `insurers` | Compañías de seguro para elegir en los presupuestos |
+| `estimate_insurance_orders` | La orden del seguro (PDF) de cada presupuesto aceptado |
 | `dealer_profile` | Una fila: datos y logo del concesionario para los presupuestos nuevos |
 | `estimate_orders` | Excel confirmados, contenido y costo congelados, número de pedido y anulaciones |
 | `estimate_supplies` | Lo pedido o apartado por ítem: origen (pedido o stock), Nº de pedido, costo con IVA, fechas de llegada y separación, anulaciones |

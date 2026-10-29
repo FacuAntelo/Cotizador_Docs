@@ -18,15 +18,19 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | POST | `/presupuestos` | Guardar un presupuesto nuevo (sin número toma el siguiente; 409 si el número existe) |
 | PUT | `/presupuestos/{numero}` | Actualizar un presupuesto guardado |
 | GET / PUT | `/presupuestos/concesionario` | Datos y logo del concesionario que encabezan los presupuestos |
-| POST | `/presupuestos/{numero}/aceptado` | Aceptar el presupuesto guardado para habilitar pedidos |
+| GET / POST | `/aseguradoras` | Compañías de seguro para el presupuesto (agregar no repite mayúsculas) |
+| POST | `/presupuestos/{numero}/aceptado` | Aceptar el presupuesto guardado para habilitar pedidos, con las respuestas del cuestionario del seguro |
+| GET / PUT | `/presupuestos/{numero}/aceptacion` | Franquicia, inspección final, pago del seguro y excluidos |
+| POST / GET / DELETE | `/presupuestos/{numero}/orden-seguro` | Subir (PDF, reemplaza), ver o quitar la orden del seguro |
 | GET | `/presupuestos/{numero}/pedidos/vista-previa` | Proponer compatibles por costo Nissan, planta y stock del taller, con el motivo de cada descarte |
 | POST | `/presupuestos/{numero}/pedidos` | Confirmar el Excel y dejar para separar lo del stock del taller (null si no hay nada para pedir) |
 | GET | `/presupuestos/{numero}/pedidos/{pedido_id}/excel` | Descargar el Excel de número de pieza y cantidad |
 | POST | `/presupuestos/{numero}/pedidos/{pedido_id}/registrar` | Registrar fecha y número asignado por Nissan |
 | POST | `/presupuestos/{numero}/pedidos/{pedido_id}/anular` | Anular un Excel que no se cargó en Nissan |
-| GET | `/presupuestos/{numero}/abastecimiento` | Estados por ítem (pedido, para separar, separado) e historial |
+| GET | `/presupuestos/{numero}/abastecimiento` | Estados por ítem (pedido, para separar, separado), excluidos e historial |
+| POST | `/presupuestos/{numero}/abastecimiento` | Pasar lo que falta de un ítem directo a pedido, para separar o separado |
 | POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/estado` | Cambiar el estado conservando origen, Nº de pedido y costo |
-| POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/anular` | Anular (por ejemplo, lo que no estaba en stock) sin borrar el historial |
+| POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/anular` | Volver a «Sin pedir» sin borrar el historial |
 
 Ver documentación interactiva en http://localhost:8000/docs
 
