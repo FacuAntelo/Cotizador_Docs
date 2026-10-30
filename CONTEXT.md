@@ -247,11 +247,15 @@ tres pasos; cada uno se puede omitir y lo omitido queda "sin indicar":
 
 1. **Franquicia**: con franquicia (y el monto) o sin franquicia.
 2. **¿Lleva inspección final?** Sí o no.
-3. **¿Se aceptó el pago completo como figura en el presupuesto?** Sí completa repuestos y mano de
-   obra con IVA (la mano de obra incluye paños y días de chapa) y el **total a abonar por la
-   compañía** = repuestos + mano de obra − franquicia. No lista todos los ítems para marcar lo
-   que no dio el seguro: quedan **excluidos** y los montos se recalculan sin ellos (se pueden
-   corregir a mano).
+3. **¿Se aceptó el pago completo como figura en el presupuesto?** Tres respuestas:
+   - **Sí, todo**: completa repuestos y mano de obra con IVA (la mano de obra incluye paños y
+     días de chapa) y el **total a abonar por la compañía** = repuestos + mano de obra −
+     franquicia.
+   - **Sí, todo, pero por otro monto**: no excluye nada y no completa nada; se carga lo que paga
+     el seguro (se muestra lo del presupuesto como referencia). Con repuestos y mano de obra el
+     total se calcula solo; si no, se escribe a mano.
+   - **No, hay cosas que no dio**: lista todos los ítems para marcar lo que no dio el seguro:
+     quedan **excluidos** y los montos se recalculan sin ellos (se pueden corregir a mano).
 
 Sin compañía, Aceptado acepta directo, como antes. Al aceptar se habilita la segunda pestaña,
 **Aceptación** (la primera es **Presupuesto**), donde todo se edita y se guarda al momento:
@@ -280,6 +284,20 @@ excluidos y orden del seguro). Los registros cargados a mano antes (comprado, pr
 se siguen mostrando. Código: BE app/{routers,database,services,schemas}/{orders,acceptance}.py,
 app/models/orders.py; FE src/features/orders/, src/features/acceptance/, src/api/orders.ts y
 src/api/acceptance.ts.
+
+### 3f. Préstamos de repuestos — `/prestamos`
+
+La pantalla **Préstamos** permite registrar movimientos entre concesionarios. Arriba muestra dos
+contadores de unidades pendientes: **Debés** suma los registros de tipo `pedido` y **Te deben**
+suma los registros de tipo `prestado`. El formulario permite elegir el tipo, cargar uno o varios
+números de pieza (uno por línea, separados en filas al guardar), cantidad (1 por defecto),
+concesionario y fecha de inicio (hoy por defecto).
+
+La grilla muestra número de pieza, cantidad, tipo, concesionario, estado, fecha de inicio y fecha
+de fin. Los estados son **pendiente**, **devuelto** y **comprado**; al pasar un registro a
+devuelto o comprado se guarda la fecha de fin del día. La migración 0016 crea la tabla `loans`.
+Código: BE `app/{routers,database,models,schemas}/loans.py`; FE `src/pages/LoansPage.tsx` y
+`src/api/loans.ts`.
 
 ### 4. Cotizador unificado — `POST /cotizar`
 
@@ -430,6 +448,7 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | `dealer_profile` | Una fila: datos y logo del concesionario para los presupuestos nuevos |
 | `estimate_orders` | Excel confirmados, contenido y costo congelados, número de pedido y anulaciones |
 | `estimate_supplies` | Lo pedido o apartado por ítem: origen (pedido o stock), Nº de pedido, costo con IVA, fechas de llegada y separación, anulaciones |
+| `loans` | Registros de préstamos o pedidos de repuestos: pieza, cantidad, concesionario, fechas y estado |
 
 Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
 
