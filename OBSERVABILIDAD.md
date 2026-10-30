@@ -271,6 +271,18 @@ agrega modelos.
 }
 ```
 
+### Caché del prompt del matcher
+
+El prompt de sistema del matcher (catálogo y reglas) no cambia entre pedidos, así que se
+cachea en Anthropic. `ANTHROPIC_CACHE_TTL` define cuánto dura: `5m` (por defecto), `1h` o
+vacío para no usarla. Cada lectura renueva la duración.
+
+Escribirlo cuesta más que la entrada normal (1,25× con `5m`, 2× con `1h`) y leerlo, 0,1×.
+Por eso `5m` conviene si más o menos 1 de cada 5 pedidos encuentra la caché viva, y `1h`,
+si lo logra más de la mitad. Para decidir con datos, mirá **Entrada leída de la caché** en
+Monitoreo → Costos IA: si queda muy baja, los pedidos llegan demasiado separados y
+conviene apagarla.
+
 ### Tope de gasto diario
 
 | Configuración | Por defecto | Qué hace |
@@ -294,8 +306,7 @@ agrega modelos.
 
 En Monitoreo → Costos IA: gasto de hoy frente al tope, gasto por día, por operación, por
 modelo y por usuario, costo promedio y p95 por cotización y proporción de la entrada
-leída de la caché (hoy 0 %: la caché de prompts todavía no está activada; es la primera
-optimización a evaluar con estos datos).
+leída de la caché.
 
 ---
 
@@ -652,7 +663,7 @@ Todas en el `.env` del backend (con su explicación en `.env.example` y en el do
 |---|---|
 | Logs | `LOG_LEVEL`, `LOG_FORMAT`, `LOG_FILE`, `LOG_RETENTION_DAYS`, `LOG_QUIET_LOGGERS` |
 | Requests | `OBS_SLOW_REQUEST_SECONDS`, `OBS_EXCLUDED_PATHS`, `OBS_QUIET_PATHS`, `OBS_WRITER_BATCH_SIZE`, `OBS_WRITER_FLUSH_SECONDS`, `OBS_WRITER_MAX_QUEUE`, `OBS_TIMEZONE`, `CORS_ORIGINS` |
-| Costos de la IA | `LLM_DAILY_BUDGET_USD`, `LLM_BUDGET_WARN_RATIO`, `LLM_BUDGET_ACTION`, `LLM_PRICES_FILE` |
+| Costos de la IA | `ANTHROPIC_CACHE_TTL`, `LLM_DAILY_BUDGET_USD`, `LLM_BUDGET_WARN_RATIO`, `LLM_BUDGET_ACTION`, `LLM_PRICES_FILE` |
 | Límites de uso | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_IA`, `RATE_LIMIT_INTEGRACIONES`, `RATE_LIMIT_ESCRITURAS`, `RATE_LIMIT_TELEMETRIA`, `RATE_LIMIT_LOGIN`, `MAX_CONCURRENT_QUOTES`, `MAX_CONCURRENT_QUOTES_RETRY_SECONDS` |
 | Recursos | `LOOP_LAG_CHECK_SECONDS`, `LOOP_LAG_WARN_MS`, `RUNTIME_SAMPLE_SECONDS`, `MONITOR_ALLOWED_HOSTS` |
 | Alertas | `ALERTS_ENABLED`, `ALERTS_CHECK_SECONDS`, `ALERTS_REPEAT_MINUTES`, `ALERT_ERROR_RATE_PCT`, `ALERT_ERROR_RATE_WINDOW_MINUTES`, `ALERT_MIN_REQUESTS`, `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES`, `ALERT_LOGIN_FAILURES`, `ALERT_LOOP_LAG_MS`, `ALERT_DMS_BUSINESS_HOURS`, `ALERT_DMS_BUSINESS_DAYS` |
