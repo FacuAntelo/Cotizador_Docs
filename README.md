@@ -39,7 +39,7 @@ Ver documentación interactiva en http://localhost:8000/docs
 
 ## Requisitos
 
-- Python 3.11+
+- Python 3.15 (si no está instalado, `uv sync` lo descarga)
 - Node.js 18+
 - [uv](https://docs.astral.sh/uv/) (gestor de paquetes Python)
 - Credenciales de Anthropic y superservice.com

@@ -8,7 +8,7 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 
 ## Stack tecnológico
 
-- **Backend:** Python 3.11+ + FastAPI, gestión de deps con `uv`
+- **Backend:** Python 3.15 + FastAPI, gestión de deps con `uv`
 - **Frontend:** React + TypeScript + Vite, SPA con TanStack Query y tipos generados del OpenAPI (ver `Cotizador_FE/README.md`)
 - **LLM:** Claude API (claude-haiku-5-5) vía Anthropic SDK
 - **Automatización browser:** Playwright, sólo para los logins (EPC y SAP); los datos se piden a las APIs
