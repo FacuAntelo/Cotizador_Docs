@@ -34,6 +34,9 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | GET | `/prestamos` | Resumen y registros de préstamos de repuestos |
 | POST | `/prestamos` | Crear un préstamo o pedido; cada número de pieza se guarda como una fila |
 | PATCH | `/prestamos/{id}` | Actualizar el estado y la fecha de fin de un registro |
+| GET | `/salud` · `/salud/detalle` | Salud del sistema (el detalle, solo desde la PC del servidor) |
+| GET | `/monitoreo/*` | Pantalla Monitoreo y rastreo de un código de error (ver OBSERVABILIDAD.md) |
+| POST | `/telemetria` | Mediciones del navegador (Web Vitals, errores, tiempos) |
 
 Ver documentación interactiva en http://localhost:8000/docs
 
@@ -98,6 +101,8 @@ matcher-nissan/
 ├── CONTEXT.md               ← contexto del proyecto para el LLM
 ├── STANDARDS.md             ← estándares de desarrollo
 ├── INTEGRACIONES.md         ← cómo funcionan EPC, SAP y el DMS por dentro (hallazgos técnicos)
+├── OBSERVABILIDAD.md        ← logs, métricas, costos de la IA, límites, alertas y perfiles
+├── LOGIN_Y_OBSERVABILIDAD.md ← qué sumar a la observabilidad cuando exista el login
 ├── backend/
 │   ├── app/
 │   │   ├── core/config.py   ← configuración (pydantic-settings)
