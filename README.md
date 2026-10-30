@@ -31,6 +31,9 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | POST | `/presupuestos/{numero}/abastecimiento` | Pasar lo que falta de un ítem directo a pedido, para separar o separado |
 | POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/estado` | Cambiar el estado conservando origen, Nº de pedido y costo |
 | POST | `/presupuestos/{numero}/abastecimiento/{registro_id}/anular` | Volver a «Sin pedir» sin borrar el historial |
+| GET | `/prestamos` | Resumen y registros de préstamos de repuestos |
+| POST | `/prestamos` | Crear un préstamo o pedido; cada número de pieza se guarda como una fila |
+| PATCH | `/prestamos/{id}` | Actualizar el estado y la fecha de fin de un registro |
 
 Ver documentación interactiva en http://localhost:8000/docs
 
