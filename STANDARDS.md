@@ -154,6 +154,78 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
+Lo que se pueda ajustar sin tocar el código (umbrales, límites, retenciones, tiempos) va
+como campo de `Settings`, con su valor por defecto, su explicación en el docstring y su
+línea en `.env.example`.
+
+---
+
+## Observabilidad y errores
+
+El sistema completo está en OBSERVABILIDAD.md. Reglas al escribir código nuevo:
+
+### Logs
+
+- Un logger por módulo: `logger = logging.getLogger(__name__)`. Nunca `print`.
+- Niveles: `INFO` lo normal que vale la pena ver, `WARNING` lo que se recupera solo o es
+  previsto (licencia en uso, límite de uso), `ERROR` lo que falló y alguien tiene que
+  mirar, `DEBUG` el detalle para diagnosticar.
+- Con traceback: `logger.exception(...)` dentro del `except`, no `traceback.format_exc()`.
+- **Nunca loguear** contraseñas, tokens, cookies ni datos del cliente final (nombre,
+  teléfono). El filtro de secretos es una red de seguridad, no un permiso.
+- El código del request se agrega solo: no hace falta pasarlo al log.
+
+### Medir
+
+```python
+from app.core.observability import annotate, step, track
+
+with step("epc.familia", familia="16546"):   # una etapa: tiempo y error en el request
+    ...
+with track("sap", "login"):                  # además queda en dependency_events
+    ...
+annotate(items=12, items_sin_resultado=1)    # datos de negocio del request
+```
+
+- `step()` para cada llamada a un servicio externo, con el servicio como prefijo.
+- `track()` para operaciones pocas e importantes de una integración (logins, licencias).
+- En los atributos, nada de secretos ni datos personales.
+- **Toda llamada a Claude pasa por `llm_call()`** (`app/services/llm_usage.py`): sin eso no
+  se registra el costo ni se respeta el tope diario.
+
+```python
+with llm_call("match", settings.anthropic_model) as call:
+    call.response = client.messages.create(...)
+```
+
+### Errores
+
+- El usuario recibe un mensaje claro, en sus palabras y sin tecnicismos; el detalle
+  técnico va al log. Nunca `detail=str(e)` con una excepción cualquiera.
+- En un router, `server_error()` (o `report_error()` si la respuesta se arma a mano):
+  loguean, guardan el error en el request y devuelven el mensaje para el usuario.
+
+```python
+except Exception as e:
+    raise server_error(e, "No se pudo consultar el EPC. Probá de nuevo.", log=logger) from e
+```
+
+- Una excepción cuyo mensaje está escrito para el vendedor hereda de `UserFacingError`
+  (`app/core/errors.py`) y se muestra tal cual.
+
+### Rutas nuevas
+
+- Cada ruta cae en un grupo de límites (`ROUTE_GROUPS` en `app/core/rate_limit.py`): los
+  POST/PUT/PATCH/DELETE son escrituras por defecto. Una lectura por POST que el front
+  dispara por cada fila se marca sin límite, o una cotización grande choca con él.
+- Una ruta que el front consulta seguido va en `OBS_QUIET_PATHS`.
+- Una pantalla interna usa `require_local_access` (con login, un rol de administrador).
+
+### Tablas nuevas de observabilidad
+
+Con `created_at`, `user_id` y `request_id` indexados, y su retención en
+`RETENTION_SETTINGS` (`app/core/observability/retention.py`).
+
 ---
 
 ## Documentación
@@ -296,6 +368,9 @@ uv run pytest tests/ -v  # todos
 - [ ] Tests unitarios pasan: `uv run pytest tests/unit -v`
 - [ ] Docstrings completos en funciones públicas nuevas
 - [ ] .env.example actualizado si se agregó variable nueva
+- [ ] Llamadas externas medidas con `step()`, y a Claude con `llm_call()`
+- [ ] Errores con mensaje para el usuario y detalle técnico en el log
+- [ ] Rutas nuevas en el grupo de límites que corresponde
 - [ ] README actualizado si el cambio es visible para quien usa el proyecto
 - [ ] Commit hecho con mensaje convencional descriptivo
 

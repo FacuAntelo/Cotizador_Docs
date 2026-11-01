@@ -8,11 +8,12 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 
 ## Stack tecnológico
 
-- **Backend:** Python 3.11+ + FastAPI, gestión de deps con `uv`
+- **Backend:** Python 3.15 + FastAPI, gestión de deps con `uv`
 - **Frontend:** React + TypeScript + Vite, SPA con TanStack Query y tipos generados del OpenAPI (ver `Cotizador_FE/README.md`)
 - **LLM:** Claude API (claude-haiku-5-5) vía Anthropic SDK
 - **Automatización browser:** Playwright, sólo para los logins (EPC y SAP); los datos se piden a las APIs
 - **Base de datos:** SQLite (`data/cotizador.db`) con SQLAlchemy 2 y migraciones de Alembic; Postgres más adelante (ver [Base de datos](#base-de-datos))
+- **Observabilidad:** logs estructurados, medición de cada request, costos de la IA, límites de uso, alertas y pantalla Monitoreo, sin infraestructura externa; trazas OpenTelemetry opcionales (ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md))
 - **Linting:** Ruff
 - **Puerto backend:** 8000 | **Puerto frontend:** 5173
 
@@ -355,6 +356,25 @@ Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el v
 
 **Corregir al asesor** — `POST /cotizar/asesor`. El vendedor puede corregir cualquier ítem (una sugerencia del asesor o un repuesto que el matcher asignó mal): escribe qué pieza es ("es la pantalla del electroventilador") y el asesor vuelve a hacer el ida y vuelta con todas sus indicaciones y las familias que ya descartó. Con una corrección también puede proponer familias del catálogo. Al validar, la última indicación se guarda como `interpretacion` de la candidata.
 
+### 7. Observabilidad — `/salud`, `/monitoreo/*`, `/telemetria`
+
+Cada request tiene un código (`request_id`, header `X-Request-ID`) que viaja por los logs, la base y las trazas; el front lo muestra en los errores del servidor («Código para soporte: …»). El detalle completo está en [OBSERVABILIDAD.md](OBSERVABILIDAD.md); en resumen:
+
+- **Logs:** consola legible y `logs/cotizador.log` en JSON con rotación diaria, con secretos tapados. Se escriben desde otro hilo.
+- **Requests:** `ObservabilityMiddleware` (ASGI puro) mide headers, primer byte y final, agrega `Server-Timing` y deja una fila en `request_log` con las etapas (`step()`) y los datos de negocio (`annotate()`).
+- **Errores:** el usuario recibe un mensaje claro; el detalle técnico queda en el log y en `request_log.error`. Las excepciones escritas para el vendedor heredan de `UserFacingError`.
+- **Costos de la IA:** toda llamada a Claude pasa por `llm_call()`: tokens y costo con el modelo que respondió en `llm_calls`, costo por cotización y **tope diario** (`LLM_DAILY_BUDGET_USD`), que por defecto apaga solo el asesor.
+- **Cotizaciones:** `quote_runs` guarda el texto del pedido, el chasis y el resultado por ítem, para medir la calidad de la IA y armar casos de prueba.
+- **Límites de uso:** por grupo de rutas, por usuario o por IP (`RATE_LIMIT_*`), y un máximo de cotizaciones simultáneas (`MAX_CONCURRENT_QUOTES`). Responden 429 con `Retry-After` y un mensaje para el usuario.
+- **Salud y recursos:** `/salud` para un monitor externo, `/salud/detalle` para diagnosticar, monitor del atraso del event loop y muestras de RAM y CPU del backend y de Chromium.
+- **Perfiles a pedido:** `scripts/perfil.ps1` usa `profiling.sampling` de Python 3.15 sin reiniciar el backend.
+- **Pantalla Monitoreo** (`/monitoreo` en el front): rendimiento, costos, calidad de la IA, integraciones, embudo de ventas, recursos, navegador y alertas, más el rastreo de un código de error. Hasta que haya login, solo desde la PC del servidor.
+- **Alertas:** reglas revisadas cada 5 minutos que avisan en el log y en Monitoreo. El canal externo queda pendiente.
+- **Telemetría del navegador:** Web Vitals, errores de JavaScript y tiempos de cotización, en lotes a `POST /telemetria`.
+- **Trazas:** OpenTelemetry opcional, apagado por defecto (`uv sync --extra otel`).
+
+Todo está preparado para el login: las tablas tienen `user_id` y alcanza con llamar a `bind_user()`. Qué sumar en ese momento está en [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
+
 ---
 
 ## Estructura del proyecto
@@ -366,11 +386,20 @@ matcher-nissan/
 ├── backend/
 │   ├── app/
 │   │   ├── core/
-│   │   │   └── config.py              # pydantic-settings, lee .env
+│   │   │   ├── config.py              # pydantic-settings, lee .env
+│   │   │   ├── observability/         # contexto del request, logs, middleware, escritor en lote, recursos, trazas
+│   │   │   ├── errors.py              # UserFacingError y report_error
+│   │   │   ├── http_errors.py         # server_error para los routers
+│   │   │   ├── rate_limit.py          # límites de uso y cupos simultáneos
+│   │   │   ├── access.py              # acceso a Monitoreo y a la salud detallada
+│   │   │   └── llm_pricing.py         # precios de Claude y costo de cada llamada
 │   │   ├── routers/
 │   │   │   ├── match.py               # POST /match
 │   │   │   ├── epc.py                 # POST /epc  (singleton scraper aquí)
-│   │   │   └── cotizar.py             # POST /cotizar
+│   │   │   ├── cotizar.py             # POST /cotizar
+│   │   │   ├── health.py              # GET /salud y /salud/detalle
+│   │   │   ├── monitoring.py          # GET /monitoreo/*
+│   │   │   └── telemetry.py           # POST /telemetria
 │   │   ├── schemas/
 │   │   │   ├── match.py               # MatchRequest, MatchResult
 │   │   │   ├── epc.py                 # EPCRequest, EPCResult
@@ -379,7 +408,13 @@ matcher-nissan/
 │   │       ├── matcher_service.py     # lógica Claude + catálogo
 │   │       ├── epc_scraper.py         # sesión EPC (Playwright) + consultas a su API
 │   │       ├── sap_stock.py           # login SAP (Playwright) + stock por httpx
-│   │       └── cotizar_service.py     # orquesta matcher + scraper
+│   │       ├── cotizar_service.py     # orquesta matcher + scraper
+│   │       ├── llm_usage.py           # llm_call(): costo de cada llamada y tope diario
+│   │       ├── quote_runs.py          # registro de cada cotización
+│   │       ├── monitoring.py          # cálculos de la pantalla Monitoreo
+│   │       ├── alerts.py              # reglas de alertas y canales de aviso
+│   │       └── telemetry.py           # guarda lo que mide el navegador
+│   ├── scripts/perfil.ps1             # perfiles del backend en vivo
 │   ├── .env                           # NO commitear
 │   ├── .env.example                   # sí commitear
 │   ├── pyproject.toml                 # deps + config ruff
@@ -428,7 +463,11 @@ EPC_HEADFUL=false          # true para ver el browser (debug)
 DATABASE_URL=sqlite:///data/cotizador.db   # default; Postgres más adelante
 SIMETRICAL_USERNAME=...    # localizador de partes de la red
 SIMETRICAL_PASSWORD=...
+LLM_DAILY_BUDGET_USD=1     # tope de gasto diario en Claude; 0 = sin tope
+LOG_FILE=logs/cotizador.log  # vacío: solo consola
 ```
+
+Las variables de observabilidad (logs, límites de uso, alertas, retención, trazas) tienen valores por defecto y están explicadas en `.env.example` y en [OBSERVABILIDAD.md](OBSERVABILIDAD.md#18-configuración-completa).
 
 ---
 
@@ -449,6 +488,13 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | `estimate_orders` | Excel confirmados, contenido y costo congelados, número de pedido y anulaciones |
 | `estimate_supplies` | Lo pedido o apartado por ítem: origen (pedido o stock), Nº de pedido, costo con IVA, fechas de llegada y separación, anulaciones |
 | `loans` | Registros de préstamos o pedidos de repuestos: pieza, cantidad, concesionario, fechas y estado |
+| `request_log` | Cada request: ruta, estado, tiempos, etapas, atributos y error |
+| `dependency_events` | Logins y tomas de licencia de EPC, SAP y el localizador |
+| `llm_calls` | Cada llamada a Claude: modelos, tokens, duración, costo y error |
+| `quote_runs` | Cada cotización: texto del pedido, chasis, resultado por ítem, tiempos y costo |
+| `runtime_samples` | Muestras de RAM, CPU, procesos de Chromium y atraso del event loop |
+| `alert_events` | Alertas disparadas, repetidas y resueltas |
+| `frontend_events` | Web Vitals, errores de JavaScript y tiempos medidos en el navegador |
 
 Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
 
@@ -509,6 +555,12 @@ Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no g
 
 6. **Cache de resultados EPC** — cuando el EPC confirma un número, guardarlo en applicability con confidence = confirmed. La BD se enriquece sola.
 
+7. **Observabilidad sin infraestructura nueva** — los datos quedan en la misma base y en `logs/`, y se ven en la pantalla Monitoreo. Medir no frena: logs y registros se escriben desde otros hilos, y si la base falla se pierden métricas pero la app sigue andando. OpenTelemetry queda listo para sumar Grafana sin tocar el código.
+
+8. **Límites de uso en memoria** — alcanza porque el backend corre en un solo proceso (las sesiones de Playwright lo obligan). Con varios procesos habría que pasar los contadores a Redis.
+
+9. **El tope de la IA no frena el mostrador** — al llegar al tope se apaga el asesor (Opus, lo caro) y el matcher sigue: se puede seguir cotizando lo que está en el catálogo.
+
 ---
 
 ## Próximos pasos en orden
@@ -519,3 +571,6 @@ Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no g
 4. **Pre-commit hooks** (ruff + pytest)
 5. **Detección de repuestos en conjunto** via `part_composition`
 6. **Equivalentes** via `spare_part_alternative`
+7. **Login** de usuarios, con la observabilidad por usuario (ver [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md))
+8. **Canal de alertas** (Telegram, email o Slack; ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md#12-alertas))
+9. **Optimizar el costo de la IA** con los datos de Monitoreo: caché de prompts, esfuerzo y modelo, evaluados con casos de `quote_runs`
