@@ -165,6 +165,11 @@ Lo siguiente sale de pruebas con dos sesiones compitiendo y de leer el JS de la 
 - **Enfriamiento de ~60 s** (medido: `Retry-After: 56` y `48`): después de que un dispositivo
   toma la licencia, nadie puede retomarla durante ese lapso, **ni siquiera con un login nuevo**.
   Fuera de ese lapso, un login nuevo se queda con la licencia sin diálogo.
+- **Aviso al repuestero:** el heartbeat de 90 s llega cuando el enfriamiento ya pasó, así que el
+  backend manda el suyo cada 20 s, sin reclamar la licencia. Al detectar que la perdió cuenta
+  60 s, una cota porque no se sabe cuándo la tomó el otro dispositivo; el número exacto recién
+  llega con el `Retry-After` de un intento fallido. `GET /epc/session` lo informa en
+  `license_taken` y `license_retry_seconds`.
 - En 18 pedidos simultáneos desde la misma pestaña no hubo ningún 403: el paralelismo dentro
   de la misma sesión no cuenta como "otro dispositivo".
 
