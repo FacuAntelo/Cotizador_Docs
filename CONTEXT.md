@@ -83,11 +83,11 @@ token dura ~20 h. Medido: tras 34 min sin consultas la sesión seguía viva (con
 
 ### 3. EPC Session y Estado — `POST /epc/connect` y `GET /epc/session`
 
-Permite forzar un login nuevo y obtener el estado de la sesión: `time_left_seconds` es lo que le queda al token del EPC (se lee del JWT) e `inactivity_left_seconds` lo que falta para que el backend libere la sesión por falta de uso. Al arrancar el backend la sesión se abre sola en segundo plano (`WARMUP_ON_START`).
+Permite forzar un login nuevo y obtener el estado de la sesión: `time_left_seconds` es lo que le queda al token del EPC (se lee del JWT) e `inactivity_left_seconds` lo que falta para que el backend libere la sesión por falta de uso. Al arrancar el backend la sesión se abre sola en segundo plano (`WARMUP_ON_START`). Si alguien cierra a mano la ventana del EPC o todo el navegador, el estado pasa a inactivo y el próximo login abre un navegador nuevo.
 
-### 3b. Stock SAP — `POST /sap/stock`
+### 3b. Stock SAP — `POST /sap/stock` y `GET /sap/session`
 
-Playwright hace el login SAML (IAS) y corta apenas el portal emite la sesión (`/login/callback`); el stock se pide con httpx a un endpoint CPI del launchpad. Las cookies se guardan en `SAP_SESSION_FILE`, así un reinicio del backend no re-loguea, y con la sesión de IAS viva el re-login no pasa por el formulario (SSO). Un keep-alive cada 5 min (`GET /cp.portal/portal/rest/v1/personalization`, 200 con sesión / 401 sin ella) la mantiene viva mientras haya uso reciente. Medido: la sesión del portal sobrevive 25 min sin uso y vence antes de los 35; a los 35 min la sesión de IAS seguía viva y el re-login fue silencioso. Las consultas corren en paralelo; sólo el login se serializa.
+Playwright hace el login SAML (IAS) y corta apenas el portal emite la sesión (`/login/callback`); el stock se pide con httpx a un endpoint CPI del launchpad. Las cookies se guardan en `SAP_SESSION_FILE`, así un reinicio del backend no re-loguea, y con la sesión de IAS viva el re-login no pasa por el formulario (SSO). Un keep-alive cada 5 min (`GET /cp.portal/portal/rest/v1/personalization`, 200 con sesión / 401 sin ella) la mantiene viva mientras haya uso reciente. Medido: la sesión del portal sobrevive 25 min sin uso y vence antes de los 35; a los 35 min la sesión de IAS seguía viva y el re-login fue silencioso. Las consultas corren en paralelo; sólo el login se serializa. `GET /sap/session` devuelve el estado de la sesión sin consultar SAP, y la barra del front lo muestra junto al del EPC.
 
 | Escenario | Tiempo |
 |---|---|
