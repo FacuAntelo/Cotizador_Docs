@@ -202,8 +202,8 @@ Una fila por request en `request_log` (ruta como plantilla, por ejemplo
 guardan:
 
 - las rutas de `OBS_EXCLUDED_PATHS` (documentación);
-- las de `OBS_QUIET_PATHS` (`/epc/session`, `/dms/stock/estado`, `/salud`, `/monitoreo`,
-  `/telemetria`) cuando salen bien y rápido: el front las consulta cada pocos segundos.
+- las de `OBS_QUIET_PATHS` (`/epc/session`, `/sap/session`, `/dms/stock/estado`, `/salud`,
+  `/monitoreo`, `/telemetria`) cuando salen bien y rápido: el front las consulta cada pocos segundos.
 
 La escritura es en lote desde un hilo aparte (`TelemetryWriter`): medir no agrega tiempo
 al request, y si la base falla se pierden métricas pero la app sigue andando. Los
@@ -573,7 +573,7 @@ JSON para saltar de un log a su traza. Con login, el span lleva `enduser.id`.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | vacío | Colector OTLP/HTTP; vacío = apagado |
 | `OTEL_SERVICE_NAME` | `cotizador-backend` | |
 | `OTEL_TRACES_SAMPLE_RATIO` | 1 | Proporción de requests trazados |
-| `OTEL_EXCLUDED_URLS` | docs, salud, monitoreo, telemetría, `/epc/session` | Rutas que no se trazan |
+| `OTEL_EXCLUDED_URLS` | docs, salud, monitoreo, telemetría, `/epc/session`, `/sap/session` | Rutas que no se trazan |
 
 Para Grafana Cloud: usar su endpoint OTLP y definir `OTEL_EXPORTER_OTLP_HEADERS` (la
 autorización) como **variable de entorno del sistema**: el exportador la lee directo, no
