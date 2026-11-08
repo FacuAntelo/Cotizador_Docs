@@ -12,7 +12,7 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 - **Frontend:** React + TypeScript + Vite, SPA con TanStack Query y tipos generados del OpenAPI (ver `Cotizador_FE/README.md`)
 - **LLM:** Claude API (claude-haiku-5-5) vía Anthropic SDK
 - **Automatización browser:** Playwright, sólo para los logins (EPC y SAP); los datos se piden a las APIs
-- **Base de datos:** SQLite (`data/cotizador.db`) con SQLAlchemy 2 y migraciones de Alembic; Postgres más adelante (ver [Base de datos](#base-de-datos))
+- **Base de datos:** Postgres 18 con SQLAlchemy 2, psycopg y migraciones de Alembic (ver [Base de datos](#base-de-datos))
 - **Observabilidad:** logs estructurados, medición de cada request, costos de la IA, límites de uso, alertas y pantalla Monitoreo, sin infraestructura externa; trazas OpenTelemetry opcionales (ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md))
 - **Linting:** Ruff
 - **Puerto backend:** 8000 | **Puerto frontend:** 5173
@@ -171,7 +171,7 @@ Reglas:
 
   Las tareas se guardan con el presupuesto (`chapa_pintura`, columna `estimates.bodywork`), así el pop up se reabre con lo cargado. Quitar el detalle de la hoja, o "Quitar chapa y pintura" en el pop up, borra las tareas. Un detalle armado antes del pop up se abre como tareas sin paños ni días. Código: `Cotizador_FE/src/features/estimate/bodywork.ts` y `BodyworkDialog.tsx`.
 
-La cantidad de mano de obra, días de chapa y paños admite **decimales** (hasta dos, "2,5"); la de los repuestos sigue siendo entera. Cada renglón guarda su tipo (`tipo`: `repuesto`, `mano_obra`, `dias_chapa`, `panos`, `detalle_chapa_pintura`; migración `0014`). Los pedidos y el seguimiento de abastecimiento sólo consideran los renglones de tipo `repuesto`.
+La cantidad de mano de obra, días de chapa y paños admite **decimales** (hasta dos, "2,5"); la de los repuestos sigue siendo entera. Cada renglón guarda su tipo (`tipo`: `repuesto`, `mano_obra`, `dias_chapa`, `panos`, `detalle_chapa_pintura`). Los pedidos y el seguimiento de abastecimiento sólo consideran los renglones de tipo `repuesto`.
 
 **Compañía de seguros.** En los datos del cliente, **Seguro** es un desplegable: **Particular** (sin compañía) o una de las compañías cargadas. La lista arranca vacía: "+ Agregar compañía…" escribe una nueva, que queda para los próximos presupuestos y no se repite con otras mayúsculas (`GET` / `POST /aseguradoras`, tabla `insurers`). Se imprime en la hoja y el PDF ("Seguro: Sancor Seguros" o "Particular") y se ve en la lista de guardados.
 
@@ -279,9 +279,7 @@ con las respuestas del cuestionario.
 Los renglones del presupuesto conservan su ID al guardar y reordenar. Si un ítem tiene historial
 de pedidos o abastecimiento no se permite borrarlo ni cambiar su número o cantidad; se puede
 editar su descripción y precio. Una necesidad adicional se agrega como otro renglón.
-Migraciones 0012 (aceptación y tablas estimate_orders / estimate_supplies), 0013 (fecha de
-llegada de lo pedido) y 0015 (compañías, tareas de chapa y pintura, lo acordado al aceptar,
-excluidos y orden del seguro). Los registros cargados a mano antes (comprado, préstamo, separado)
+Los registros cargados a mano antes (comprado, préstamo, separado)
 se siguen mostrando. Código: BE app/{routers,database,services,schemas}/{orders,acceptance}.py,
 app/models/orders.py; FE src/features/orders/, src/features/acceptance/, src/api/orders.ts y
 src/api/acceptance.ts.
@@ -296,7 +294,7 @@ concesionario y fecha de inicio (hoy por defecto).
 
 La grilla muestra número de pieza, cantidad, tipo, concesionario, estado, fecha de inicio y fecha
 de fin. Los estados son **pendiente**, **devuelto** y **comprado**; al pasar un registro a
-devuelto o comprado se guarda la fecha de fin del día. La migración 0016 crea la tabla `loans`.
+devuelto o comprado se guarda la fecha de fin del día.
 Código: BE `app/{routers,database,models,schemas}/loans.py`; FE `src/pages/LoansPage.tsx` y
 `src/api/loans.ts`.
 
@@ -460,7 +458,7 @@ EPC_PASSWORD=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false          # true para ver el browser (debug)
-DATABASE_URL=sqlite:///data/cotizador.db   # default; Postgres más adelante
+DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
 SIMETRICAL_USERNAME=...    # localizador de partes de la red
 SIMETRICAL_PASSWORD=...
 LLM_DAILY_BUDGET_USD=1     # tope de gasto diario en Claude; 0 = sin tope
@@ -473,13 +471,19 @@ Las variables de observabilidad (logs, límites de uso, alertas, retención, tra
 
 ## Base de datos
 
-SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones de Alembic en `migrations/`. El backend aplica las migraciones al arrancar (`upgrade_database()` en el lifespan de `main.py`). Las tablas están en `app/models/` y el acceso en los repositorios de `app/database/`, que son sincrónicos y los routers llaman con `asyncio.to_thread`. Para pasar a Postgres alcanza con instalar el driver y cambiar `DATABASE_URL`.
+Postgres 18 (`DATABASE_URL`), con SQLAlchemy 2, el driver psycopg y migraciones de Alembic en `migrations/`. En desarrollo es el Postgres instalado en Windows (servicio `postgresql-x64-18`, puerto 5432, solo acepta conexiones de esta PC): la base `cotizador_dev`, con el usuario `cotizador_dev`, que no es superusuario. Los tests crean y vacían las suyas (`cotizador_test` y `cotizador_migraciones_test`) con ese mismo usuario. Todas usan la collation `es-AR`, que se elige al crear la base y no se puede cambiar después. Productivo va a tener su propia base y su propio usuario. El backend aplica las migraciones al arrancar (`upgrade_database()` en el lifespan de `main.py`) y, si Postgres no responde, no arranca y dice cómo levantarlo. Las tablas están en `app/models/` y el acceso en los repositorios de `app/database/`, que son sincrónicos y los routers llaman con `asyncio.to_thread`.
+
+Hay dos schemas: `app`, con el negocio (el de todos los modelos que no digan otro), y `observability`, con la telemetría. `public` no existe: la migración inicial lo elimina, así que toda tabla y toda consulta dice su schema (`app.estimates`). En `psql`, `SET search_path TO app, observability;` evita escribirlo en cada consulta. Una extensión nueva se instala en un schema explícito (`CREATE EXTENSION pg_trgm SCHEMA app`).
+
+La historia anterior (24 migraciones, de la época de SQLite) quedó en git: `0001_esquema_inicial` es el punto de partida en Postgres. El 6 de noviembre de 2026 la instalación pasó a Postgres arrancando de cero: los datos de SQLite no se copiaron y `data/cotizador.db` quedó sin usar.
+
+Las tablas sin prefijo están en `app`.
 
 | Tabla | Qué guarda |
 |---|---|
-| `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. Antes vivían en `data/catalogo_candidatos.json`: la migración inicial las importa una vez si encuentra el archivo |
+| `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. |
 | `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
-| `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades |
+| `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades (30 días) |
 | `estimates` | Presupuestos formales: número (único), fecha, validez, cliente, datos del concesionario al emitirlo, total con IVA, compañía de seguros, tareas de chapa y pintura y lo acordado al aceptar (franquicia, inspección final, pago del seguro) |
 | `estimate_lines` | Renglones de cada presupuesto, en orden, con el precio unitario con IVA, la disponibilidad y si quedó excluido al aceptar |
 | `insurers` | Compañías de seguro para elegir en los presupuestos |
@@ -488,15 +492,52 @@ SQLite en `data/cotizador.db` (`DATABASE_URL`), con SQLAlchemy 2 y migraciones d
 | `estimate_orders` | Excel confirmados, contenido y costo congelados, número de pedido y anulaciones |
 | `estimate_supplies` | Lo pedido o apartado por ítem: origen (pedido o stock), Nº de pedido, costo con IVA, fechas de llegada y separación, anulaciones |
 | `loans` | Registros de préstamos o pedidos de repuestos: pieza, cantidad, concesionario, fechas y estado |
-| `request_log` | Cada request: ruta, estado, tiempos, etapas, atributos y error |
-| `dependency_events` | Logins y tomas de licencia de EPC, SAP y el localizador |
+| `observability.request_log` | Cada request: ruta, estado, tiempos, etapas, atributos y error |
+| `observability.dependency_events` | Logins y tomas de licencia de EPC, SAP y el localizador |
 | `llm_calls` | Cada llamada a Claude: modelos, tokens, duración, costo y error |
 | `quote_runs` | Cada cotización: texto del pedido, chasis, resultado por ítem, tiempos y costo |
-| `runtime_samples` | Muestras de RAM, CPU, procesos de Chromium y atraso del event loop |
-| `alert_events` | Alertas disparadas, repetidas y resueltas |
-| `frontend_events` | Web Vitals, errores de JavaScript y tiempos medidos en el navegador |
+| `observability.runtime_samples` | Muestras de RAM, CPU, procesos de Chromium y atraso del event loop |
+| `observability.alert_events` | Alertas disparadas, repetidas y resueltas |
+| `observability.frontend_events` | Web Vitals, errores de JavaScript y tiempos medidos en el navegador |
 
-Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no guarda la zona horaria). Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`.
+Convenciones del esquema, en `app/models/base.py`:
+
+- **Fechas:** `timestamptz`, siempre en UTC (`UTCDateTime`, que rechaza fechas sin zona horaria).
+- **JSON:** `JSONB` (`Json`). Un `None` es NULL de SQL y las claves no conservan su orden: lo que depende del orden va en una lista.
+- **Claves primarias numéricas:** `BIGINT` con `IDENTITY`.
+- **Costos y existencias:** `numeric`, nunca `float`: se suman y tienen que dar exacto.
+- **Restricciones:** con nombres fijos (`uq_estimates_number`, `fk_...`), para que una migración pueda referirse a ellas. Los estados llevan un `CHECK` con los mismos valores que los `Literal` de `app/schemas/` (un test comprueba que coinciden).
+- **Índices:** solo los que usa una consulta. Cada uno se paga en cada escritura.
+
+Para cambiar una tabla: modificar el modelo y crear la migración con `uv run alembic revision --autogenerate -m "descripcion"`. Un test falla si un modelo no coincide con las migraciones.
+
+### Qué va en la base y qué no
+
+| Qué | Dónde | Por qué |
+|---|---|---|
+| Presupuestos, pedidos, stock, precios, costos de la IA (`llm_calls`) y cotizaciones (`quote_runs`) | `app` | Son datos del negocio: se respaldan y van a tener organización |
+| Requests, integraciones, recursos, alertas y telemetría del navegador | `observability` | Se pueden perder sin afectar al negocio: no tienen foreign keys y sus datos no entran en los respaldos. Ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md#15-tablas-retención-y-consultas-útiles) |
+| Logs de texto | Consola y `logs/` | Nunca en la base. En la nube, `LOG_FILE` vacío: el proveedor junta la consola |
+
+Si el volumen algún día lo justifica, la telemetría puede pasar a otra base o a una herramienta dedicada (Grafana, Sentry) sin tocar el negocio: no tiene foreign keys y ninguna consulta la cruza con las tablas de `app`. Hoy usa la misma conexión que el negocio (`session_factory`). Para llevarla a otra base hace falta una segunda URL, y que el writer y la limpieza diaria, que también escriben y limpian `llm_calls` y `quote_runs`, elijan la conexión según el schema de la tabla. Para una herramienta dedicada, además, Monitoreo tendría que leer de ella.
+
+Dos escrituras están pensadas para muchos usuarios:
+
+- **Stock del taller:** el agente sube la foto entera cada 5 minutos, pero solo se escribe lo que cambió. Borrar y reinsertar todo dejaría una fila muerta por repuesto en cada subida.
+- **Número de presupuesto:** se asigna con un bloqueo de Postgres (`ESTIMATE_NUMBER_LOCK`), que se libera al terminar la transacción. Con reintentos, varios vendedores simultáneos pueden agotarlos.
+
+### Lo que cambia con organizaciones, sucursales y usuarios
+
+El esquema es de un solo concesionario. Antes de sumar esas tablas hay que decidir de quién es cada dato:
+
+| Hoy | Por qué hay que tocarlo |
+|---|---|
+| `uq_estimates_number`, `uq_insurers_name` | Son únicos en toda la base: tienen que pasar a ser por organización o por sucursal. El bloqueo que asigna el número también (una clave por organización) |
+| `dealer_profile`, `workshop_prices`, `price_list`, `compatibility_list` | Son una sola fila (`id = 1`): decidir si son por sucursal, por organización o compartidas |
+| `dms_stock`, `recent_vehicles` | Su clave no dice de quién son: la sucursal o la organización entra en la clave primaria |
+| Tablas de observabilidad | Ya tienen `user_id` (`varchar(64)`, acepta cualquier id); falta sumar la organización para filtrar Monitoreo |
+
+Si el aislamiento entre organizaciones se hace con Row Level Security, el backend tiene que conectarse con un rol que no sea el dueño de las tablas: RLS no se aplica al dueño (salvo con `FORCE ROW LEVEL SECURITY`) ni a un superusuario, y hoy `cotizador_dev` es el dueño.
 
 ## Modelo de datos (diseñado, pendiente de implementar en DB)
 
@@ -555,7 +596,7 @@ Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no g
 
 6. **Cache de resultados EPC** — cuando el EPC confirma un número, guardarlo en applicability con confidence = confirmed. La BD se enriquece sola.
 
-7. **Observabilidad sin infraestructura nueva** — los datos quedan en la misma base y en `logs/`, y se ven en la pantalla Monitoreo. Medir no frena: logs y registros se escriben desde otros hilos, y si la base falla se pierden métricas pero la app sigue andando. OpenTelemetry queda listo para sumar Grafana sin tocar el código.
+7. **Observabilidad sin infraestructura nueva** — los datos quedan en Postgres, en un schema aparte del negocio, y en `logs/`, y se ven en la pantalla Monitoreo. Medir no frena: logs y registros se escriben desde otros hilos, y si la base falla se pierden métricas pero la app sigue andando. OpenTelemetry queda listo para sumar Grafana sin tocar el código.
 
 8. **Límites de uso en memoria** — alcanza porque el backend corre en un solo proceso (las sesiones de Playwright lo obligan). Con varios procesos habría que pasar los contadores a Redis.
 
@@ -565,7 +606,7 @@ Las fechas se guardan en UTC (`UTCDateTime` en `app/models/base.py`: SQLite no g
 
 ## Próximos pasos en orden
 
-1. **Modelo de catálogo en la base** (la base ya existe: SQLite + Alembic) con el modelo diseñado
+1. **Modelo de catálogo en la base** (la base ya existe: Postgres + Alembic) con el modelo diseñado
 2. **Cache de resultados EPC** en tabla `applicability`
 3. **Tests unitarios** para `MatcherService` y `CotizarService` con mocks
 4. **Pre-commit hooks** (ruff + pytest)

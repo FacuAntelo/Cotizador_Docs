@@ -543,7 +543,7 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 | `SESSION_KEEPALIVE_HOURS` | `3` | Horas sin uso tras las que se liberan EPC y SAP |
 | `WARMUP_ON_START` | `true` | Abrir ambas sesiones al arrancar el backend |
 | `DMS_AGENT_TOKEN` | vacío | Token del agente del taller; vacío deshabilita la subida |
-| `DATABASE_URL` | `sqlite:///data/cotizador.db` | Base donde se guarda la foto del stock del taller |
+| `DATABASE_URL` | (obligatoria) | Base Postgres donde se guarda la foto del stock del taller |
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
 | `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS,PICKING` | Depósitos que no suman al stock que se muestra por defecto (separados por coma) |
 | `DMS_IGNORED_DEPOSITS` | `MINOZZI` | Depósitos que no entran al sistema: no se guardan ni se muestran (separados por coma) |

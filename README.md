@@ -45,6 +45,7 @@ Ver documentación interactiva en http://localhost:8000/docs
 - Python 3.15 (si no está instalado, `uv sync` lo descarga)
 - Node.js 18+
 - [uv](https://docs.astral.sh/uv/) (gestor de paquetes Python)
+- PostgreSQL 18 (`winget install PostgreSQL.PostgreSQL.18`), con `C:\Program Files\PostgreSQL\18\bin` en el PATH para usar `psql` y `pg_dump`
 - Credenciales de Anthropic y superservice.com
 
 ## Setup
@@ -76,11 +77,20 @@ EPC_PASSWORD=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false
-DATABASE_URL=sqlite:///data/cotizador.db   # opcional: es el valor por defecto
+DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
 ```
 
+Una sola vez, el usuario y la base de desarrollo. Pide la contraseña de `postgres`; el
+usuario `cotizador_dev` puede crear bases para que los tests armen la suya:
+
+```powershell
+psql -h 127.0.0.1 -U postgres -c "CREATE ROLE cotizador_dev LOGIN CREATEDB PASSWORD 'cotizador_dev'" -c "CREATE DATABASE cotizador_dev OWNER cotizador_dev LOCALE_PROVIDER icu ICU_LOCALE 'es-AR' TEMPLATE template0"
+```
+
+Postgres corre como servicio de Windows (`postgresql-x64-18`) y arranca solo con la PC.
+
 ```bash
-# Levantar servidor (al arrancar crea o actualiza la base en data/cotizador.db)
+# Levantar servidor (al arrancar crea o actualiza las tablas)
 uv run uvicorn main:app --reload
 # → http://localhost:8000
 ```
@@ -127,11 +137,19 @@ matcher-nissan/
 uv run ruff check . --fix
 uv run ruff format .
 
-# Tests
+# Tests: crean y vacían su propia base (cotizador_test), nunca la de desarrollo
 uv run pytest -v
 
 # Migración nueva después de cambiar un modelo de app/models/
 uv run alembic revision --autogenerate -m "descripcion"
+
+# Consola de la base. Las tablas están en los schemas app y observability:
+# app.estimates, o antes `SET search_path TO app, observability;`
+psql -h 127.0.0.1 -U cotizador_dev cotizador_dev
+
+# Respaldo: lleva la estructura de la telemetría, no sus datos (requests y demás), que se
+# pueden perder y ocupan la mayor parte. Con -f y no con >: en PowerShell, > rompe el archivo.
+pg_dump -h 127.0.0.1 -U cotizador_dev -Fc --exclude-table-data="observability.*" -f respaldo.dump cotizador_dev
 ```
 
 Commits en formato convencional: `feat(cotizar): descripción`, `fix(epc): ...`, etc.

@@ -134,7 +134,7 @@ ANTHROPIC_API_KEY=
 EPC_USERNAME=
 EPC_PASSWORD=
 EPC_URL=https://login.superservice.com/login/es-es/
-DATABASE_URL=sqlite:///./nissan.db
+DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
 ```
 
 Leer con pydantic-settings en `app/core/config.py`:
@@ -224,7 +224,20 @@ except Exception as e:
 ### Tablas nuevas de observabilidad
 
 Con `created_at`, `user_id` y `request_id` indexados, y su retención en
-`RETENTION_SETTINGS` (`app/core/observability/retention.py`).
+`RETENTION_SETTINGS` (`app/core/observability/retention.py`). Si se puede perder sin
+afectar al negocio va en el schema `observability`, sin foreign keys; si crece mucho,
+particionada por mes (`app/database/partitions.py`). Un dato del negocio no es telemetría
+aunque lo genere la medición (los costos de la IA van en `app`, con el resto de las tablas).
+
+### Tablas nuevas del negocio
+
+- Van en `app`, el schema por defecto de los modelos. La base no tiene `public`: una
+  tabla o una consulta sin schema falla en vez de quedar en otro lado.
+- Un índice por consulta real que lo necesite, y uno en cada foreign key.
+- Un `CHECK` en cada columna con valores fijos, igual al `Literal` del schema.
+- `numeric` para importes y cantidades. Nunca `float`.
+- Nada de borrar y reinsertar una tabla entera en una tarea periódica: escribir solo lo
+  que cambió.
 
 ---
 
@@ -348,10 +361,13 @@ def test_match_returns_correct_family_for_pdi():
 
 ### Reglas
 
-- Mockear siempre dependencias externas: Anthropic API, Playwright, base de datos.
+- Mockear siempre dependencias externas: Anthropic API, Playwright. La base no se mockea:
+  los tests corren contra Postgres en una base propia (`cotizador_test`), porque otro motor
+  no detecta lo que Postgres rechaza (largos, foreign keys, tipos).
 - Nombres de test descriptivos: `test_[qué]_[condición]_[resultado esperado]`.
 - Un assert por test cuando sea posible.
-- Los tests deben correr sin conexión a internet ni servicios externos.
+- Los tests deben correr sin conexión a internet ni servicios externos, salvo el Postgres
+  local.
 
 Correr tests:
 ```bash
