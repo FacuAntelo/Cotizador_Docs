@@ -552,16 +552,48 @@ para soporte.
 
 ## 14. Trazas con OpenTelemetry (opcional)
 
-Apagadas por defecto y sin costo. Se activan así:
+Solo el backend productivo las manda siempre, a un Grafana que está siempre prendido. En
+desarrollo quedan apagadas (`OTEL_EXPORTER_OTLP_ENDPOINT` vacío) y se prenden para ver algo
+puntual. Cada traza lleva su entorno (`deployment.environment.name`, de `OTEL_ENVIRONMENT`:
+`produccion` o `desarrollo`), así que en Grafana se filtran por separado aunque lleguen al
+mismo lugar. Apagadas no cuestan nada.
 
-1. Instalar las dependencias opcionales: `uv sync --extra otel`.
-2. Levantar un colector. Para probar en la PC, Grafana con todo incluido:
-   ```bash
-   docker run --rm -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm
-   ```
-3. En el `.env`: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` y reiniciar el backend.
-4. Abrir Grafana en http://localhost:3000 → Explore → Tempo, y buscar por servicio
-   `cotizador-backend`.
+**Grafana, siempre prendido en esta PC:** `docker-compose.yml` del backend levanta
+`grafana/otel-lgtm` (Grafana, Tempo, Prometheus, Loki y el colector en un contenedor).
+
+1. En Docker Desktop, activar *Settings → General → Start Docker Desktop when you sign in*.
+2. Una sola vez, desde `Cotizador_BE`: `docker compose up -d`. Después vuelve solo cada vez
+   que arranca Docker Desktop (`restart: unless-stopped`).
+3. Entrar a http://localhost:3000 con `admin` / `admin` y cambiar la contraseña, como pide
+   Grafana la primera vez.
+
+Solo escucha en esta PC (`127.0.0.1:3000` y `127.0.0.1:4318`). Los datos quedan en el
+volumen `grafana_data` y Tempo guarda las trazas 14 días. La versión de la imagen está fija
+en el compose: se actualiza a propósito.
+
+Límites que conviene tener presentes:
+
+- Docker Desktop arranca cuando alguien inicia sesión en Windows, no como servicio: después
+  de un reinicio, Grafana vuelve recién al entrar. Lo mismo vale para todo lo que corre en
+  esta PC sin ser servicio, y se resuelve al armar productivo.
+- Grafana aclara que esta imagen está pensada para desarrollo y pruebas. Alcanza para un
+  cliente en una PC; con más clientes o un servidor, conviene Grafana Cloud.
+
+**Productivo:**
+
+1. `uv sync --extra otel`.
+2. En el `.env`: `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` y
+   `OTEL_ENVIRONMENT=produccion`. Con `127.0.0.1` y no `localhost`, por el mismo motivo
+   que la base.
+
+**Desarrollo, para ver algo puntual:**
+
+1. `uv sync --extra otel`, si no están instaladas.
+2. En el `.env`: `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` (con
+   `OTEL_ENVIRONMENT=desarrollo`, que es el valor por defecto) y reiniciar el backend.
+3. En Grafana → Explore → Tempo, filtrar por servicio `cotizador-backend` y entorno
+   `desarrollo`: van al mismo Grafana que productivo, pero no se mezclan.
+4. Al terminar, vaciar `OTEL_EXPORTER_OTLP_ENDPOINT` y reiniciar el backend.
 
 Qué genera: un span por request (FastAPI), uno por cada `step()` (EPC, SAP, Claude…),
 uno por cada pedido de httpx (SAP y el localizador) y los del SDK de Anthropic **solo con
@@ -572,10 +604,11 @@ JSON para saltar de un log a su traza. Con login, el span lleva `enduser.id`.
 |---|---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | vacío | Colector OTLP/HTTP; vacío = apagado |
 | `OTEL_SERVICE_NAME` | `cotizador-backend` | |
+| `OTEL_ENVIRONMENT` | `desarrollo` | `desarrollo` o `produccion`; va en cada traza como `deployment.environment.name` |
 | `OTEL_TRACES_SAMPLE_RATIO` | 1 | Proporción de requests trazados |
 | `OTEL_EXCLUDED_URLS` | docs, salud, monitoreo, telemetría, `/epc/session`, `/sap/session` | Rutas que no se trazan |
 
-Para Grafana Cloud: usar su endpoint OTLP y definir `OTEL_EXPORTER_OTLP_HEADERS` (la
+Si algún día se pasa a Grafana Cloud: usar su endpoint OTLP y definir `OTEL_EXPORTER_OTLP_HEADERS` (la
 autorización) como **variable de entorno del sistema**: el exportador la lee directo, no
 del `.env`. Si el colector no responde, la app sigue andando: el exportador avisa en el log
 y al apagar espera unos segundos a que venzan los reintentos.
@@ -685,7 +718,7 @@ Todas en el `.env` del backend (con su explicación en `.env.example` y en el do
 | Recursos | `LOOP_LAG_CHECK_SECONDS`, `LOOP_LAG_WARN_MS`, `RUNTIME_SAMPLE_SECONDS`, `MONITOR_ALLOWED_HOSTS` |
 | Alertas | `ALERTS_ENABLED`, `ALERTS_CHECK_SECONDS`, `ALERTS_REPEAT_MINUTES`, `ALERT_ERROR_RATE_PCT`, `ALERT_ERROR_RATE_WINDOW_MINUTES`, `ALERT_MIN_REQUESTS`, `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES`, `ALERT_LOGIN_FAILURES`, `ALERT_LOOP_LAG_MS`, `ALERT_DMS_BUSINESS_HOURS`, `ALERT_DMS_BUSINESS_DAYS` |
 | Telemetría del front | `TELEMETRY_MAX_EVENTS`, `TELEMETRY_MAX_BYTES` (y `VITE_TELEMETRY` en el front) |
-| Trazas | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_TRACES_SAMPLE_RATIO`, `OTEL_EXCLUDED_URLS` |
+| Trazas | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_ENVIRONMENT`, `OTEL_TRACES_SAMPLE_RATIO`, `OTEL_EXCLUDED_URLS` |
 | Retención | `RETENTION_REQUESTS_DAYS`, `RETENTION_EVENTS_DAYS`, `RETENTION_LLM_CALLS_DAYS`, `RETENTION_QUOTES_DAYS`, `RETENTION_DMS_UPLOADS_DAYS`, `RETENTION_RUNTIME_DAYS`, `RETENTION_ALERTS_DAYS`, `RETENTION_FRONTEND_DAYS` |
 
 ---

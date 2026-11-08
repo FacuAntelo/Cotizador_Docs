@@ -46,6 +46,7 @@ Ver documentación interactiva en http://localhost:8000/docs
 - Node.js 18+
 - [uv](https://docs.astral.sh/uv/) (gestor de paquetes Python)
 - PostgreSQL 18 (`winget install PostgreSQL.PostgreSQL.18`), con `C:\Program Files\PostgreSQL\18\bin` en el PATH para usar `psql` y `pg_dump`
+- Docker Desktop, para Grafana (trazas; en desarrollo es opcional)
 - Credenciales de Anthropic y superservice.com
 
 ## Setup
@@ -88,6 +89,10 @@ psql -h 127.0.0.1 -U postgres -c "CREATE ROLE cotizador_dev LOGIN CREATEDB PASSW
 ```
 
 Postgres corre como servicio de Windows (`postgresql-x64-18`) y arranca solo con la PC.
+
+Grafana corre en Docker y queda siempre prendido: se levanta una vez con
+`docker compose up -d` y después vuelve solo con Docker Desktop. Ver
+[OBSERVABILIDAD.md](OBSERVABILIDAD.md#14-trazas-con-opentelemetry-opcional).
 
 ```bash
 # Levantar servidor (al arrancar crea o actualiza las tablas)
