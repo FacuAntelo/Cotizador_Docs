@@ -18,8 +18,8 @@ navegador ──X-Request-ID──▶ middleware ──▶ endpoint ──▶ st
                     Monitoreo (/monitoreo) · alertas · /salud · trazas (opcional)
 ```
 
-Todo funciona sin infraestructura nueva: los datos quedan en la misma base del sistema
-(`data/cotizador.db`) y en `logs/`. OpenTelemetry queda listo para mandar trazas a
+Todo funciona sin infraestructura nueva: los datos quedan en Postgres, en un schema
+aparte del negocio, y en `logs/`. OpenTelemetry queda listo para mandar trazas a
 Grafana el día que se quiera (apagado por defecto).
 
 ## Índice
@@ -586,41 +586,58 @@ y al apagar espera unos segundos a que venzan los reintentos.
 
 | Tabla | Qué guarda | Retención (días) |
 |---|---|---|
-| `request_log` | Un request: ruta, estado, tiempos, etapas, atributos, error | `RETENTION_REQUESTS_DAYS` (90) |
-| `dependency_events` | Logins y licencias de EPC, SAP y el localizador | `RETENTION_EVENTS_DAYS` (90) |
-| `llm_calls` | Cada llamada a Claude: modelos, tokens, costo, error | `RETENTION_LLM_CALLS_DAYS` (395: comparar un año con otro) |
-| `quote_runs` | Cada cotización: pedido, chasis, resultado por ítem, costo | `RETENTION_QUOTES_DAYS` (90) |
-| `runtime_samples` | RAM, CPU, Chromium y atraso del loop | `RETENTION_RUNTIME_DAYS` (30) |
-| `alert_events` | Alertas disparadas, repetidas y resueltas | `RETENTION_ALERTS_DAYS` (90) |
-| `frontend_events` | Web Vitals, errores de JavaScript y tiempos del navegador | `RETENTION_FRONTEND_DAYS` (90) |
+| `observability.request_log` | Un request: ruta, estado, tiempos, etapas, atributos, error | `RETENTION_REQUESTS_DAYS` (90) |
+| `observability.dependency_events` | Logins y licencias de EPC, SAP y el localizador | `RETENTION_EVENTS_DAYS` (90) |
+| `app.llm_calls` | Cada llamada a Claude: modelos, tokens, costo, error | `RETENTION_LLM_CALLS_DAYS` (395: comparar un año con otro) |
+| `app.quote_runs` | Cada cotización: pedido, chasis, resultado por ítem, costo | `RETENTION_QUOTES_DAYS` (90) |
+| `observability.runtime_samples` | RAM, CPU, Chromium y atraso del loop | `RETENTION_RUNTIME_DAYS` (30) |
+| `observability.alert_events` | Alertas disparadas, repetidas y resueltas | `RETENTION_ALERTS_DAYS` (90) |
+| `observability.frontend_events` | Web Vitals, errores de JavaScript y tiempos del navegador | `RETENTION_FRONTEND_DAYS` (90) |
 
 Todas tienen `created_at` en UTC y `user_id` (vacío hasta que exista el login). Una
 limpieza automática borra lo vencido al minuto de arrancar y después una vez por día; 0
-días = no se borra nunca. Migraciones: `0017` a `0021`.
+días = no se borra nunca.
 
-Consultas útiles (SQLite: `sqlite3 data/cotizador.db` o DB Browser for SQLite):
+**Telemetría y negocio van separados.** Lo que está en el schema `observability` se puede
+perder sin afectar al negocio: no tiene foreign keys hacia las demás tablas y los respaldos
+guardan su estructura pero no sus datos. `llm_calls` y `quote_runs` no son telemetría: son
+costos y pedidos, y van en `app` con el resto del sistema. Los logs de texto nunca van a la base.
+
+**`request_log` y `frontend_events` están particionadas por mes**
+(`app/database/partitions.py`), porque son las que más crecen. Vencer un mes es un `DROP` de
+su partición: instantáneo y sin filas muertas. Por eso una fila dura entre los días
+configurados y un mes más. El backend crea el mes actual y los dos siguientes al arrancar y
+cada día; lo que caiga fuera de esos meses va a una partición por defecto, que tiene que
+estar vacía (ver la consulta de abajo).
+
+Consultas útiles (`psql -h 127.0.0.1 -U cotizador_dev cotizador_dev`):
 
 ```sql
 -- Gasto en Claude por día (hora UTC) y operación
-SELECT date(created_at) AS dia, operation, round(sum(cost_usd), 4) AS usd, count(*) AS llamadas
-FROM llm_calls GROUP BY dia, operation ORDER BY dia DESC;
+SELECT (created_at AT TIME ZONE 'UTC')::date AS dia, operation,
+       round(sum(cost_usd)::numeric, 4) AS usd, count(*) AS llamadas
+FROM app.llm_calls GROUP BY dia, operation ORDER BY dia DESC;
 
 -- Las 20 cotizaciones más caras
-SELECT created_at, request_id, round(llm_cost_usd, 4) AS usd, items_total, text
-FROM quote_runs ORDER BY llm_cost_usd DESC LIMIT 20;
+SELECT created_at, request_id, round(llm_cost_usd::numeric, 4) AS usd, items_total, text
+FROM app.quote_runs ORDER BY llm_cost_usd DESC NULLS LAST LIMIT 20;
 
 -- Pedidos que la IA no resolvió (para revisar y armar casos de prueba)
-SELECT created_at, text, items_without_result FROM quote_runs
+SELECT created_at, text, items_without_result FROM app.quote_runs
 WHERE items_without_result > 0 ORDER BY created_at DESC;
 
 -- Rutas más lentas de la última semana
-SELECT route, count(*) AS n, round(avg(duration_ms)) AS promedio_ms, max(duration_ms) AS max_ms
-FROM request_log WHERE created_at >= datetime('now', '-7 days')
+SELECT route, count(*) AS n, round(avg(duration_ms)) AS promedio_ms, max(duration_ms) AS max_ms,
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms
+FROM observability.request_log WHERE created_at >= now() - interval '7 days'
 GROUP BY route ORDER BY promedio_ms DESC;
 
 -- Logins fallidos
-SELECT created_at, service, error_code, error FROM dependency_events
-WHERE operation = 'login' AND ok = 0 ORDER BY created_at DESC;
+SELECT created_at, service, error_code, error FROM observability.dependency_events
+WHERE operation = 'login' AND NOT ok ORDER BY created_at DESC;
+
+-- Tiene que dar 0: si no, dejaron de crearse las particiones de cada mes
+SELECT count(*) FROM observability.request_log_default;
 ```
 
 ---
@@ -669,7 +686,7 @@ Todas en el `.env` del backend (con su explicación en `.env.example` y en el do
 | Alertas | `ALERTS_ENABLED`, `ALERTS_CHECK_SECONDS`, `ALERTS_REPEAT_MINUTES`, `ALERT_ERROR_RATE_PCT`, `ALERT_ERROR_RATE_WINDOW_MINUTES`, `ALERT_MIN_REQUESTS`, `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES`, `ALERT_LOGIN_FAILURES`, `ALERT_LOOP_LAG_MS`, `ALERT_DMS_BUSINESS_HOURS`, `ALERT_DMS_BUSINESS_DAYS` |
 | Telemetría del front | `TELEMETRY_MAX_EVENTS`, `TELEMETRY_MAX_BYTES` (y `VITE_TELEMETRY` en el front) |
 | Trazas | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_TRACES_SAMPLE_RATIO`, `OTEL_EXCLUDED_URLS` |
-| Retención | `RETENTION_REQUESTS_DAYS`, `RETENTION_EVENTS_DAYS`, `RETENTION_LLM_CALLS_DAYS`, `RETENTION_QUOTES_DAYS`, `RETENTION_RUNTIME_DAYS`, `RETENTION_ALERTS_DAYS`, `RETENTION_FRONTEND_DAYS` |
+| Retención | `RETENTION_REQUESTS_DAYS`, `RETENTION_EVENTS_DAYS`, `RETENTION_LLM_CALLS_DAYS`, `RETENTION_QUOTES_DAYS`, `RETENTION_DMS_UPLOADS_DAYS`, `RETENTION_RUNTIME_DAYS`, `RETENTION_ALERTS_DAYS`, `RETENTION_FRONTEND_DAYS` |
 
 ---
 
