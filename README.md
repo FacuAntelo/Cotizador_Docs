@@ -4,8 +4,22 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 
 ## Endpoints disponibles
 
+Todas piden login salvo las marcadas como públicas; cada una exige su permiso (ver
+[USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md)). Las escrituras llevan el header
+`X-OEMIA: 1` del front.
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
+| POST | `/auth/login` | Pública. Usuario, contraseña y código de verificación → sesión en esta PC |
+| POST | `/auth/salir` | Cerrar la sesión y olvidar esta PC |
+| GET | `/auth/me` | Usuario, organización, sucursales, permisos y si otra PC tomó el usuario |
+| POST | `/auth/renovar` | Pública. Renueva la cookie de la sesión en navegadores sin DBSC |
+| POST | `/auth/dbsc/registro` · `/auth/dbsc/renovar` | Públicas. Las llama Chrome solo para atar la sesión a la PC |
+| POST | `/auth/usar-aca` | Retomar el usuario en esta PC (la otra queda afuera) |
+| POST | `/auth/confirmar-contrasena` | Volver a escribir la contraseña antes de algo sensible |
+| PUT | `/auth/contrasena` | Cambiar la contraseña (cierra las demás PCs) |
+| POST / DELETE | `/auth/codigo-verificacion` | Configurar o quitar el código de verificación (`/activar` lo activa) |
+| GET / DELETE | `/auth/sesiones` | Mis dispositivos: las PCs recordadas y cerrar una |
 | POST | `/match` | Texto libre → repuestos identificados + familias |
 | POST | `/epc` | Chasis + familias → números de pieza completos |
 | POST | `/cotizar` | **Endpoint principal:** texto libre + chasis → números de pieza |
@@ -34,8 +48,8 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | GET | `/prestamos` | Resumen y registros de préstamos de repuestos |
 | POST | `/prestamos` | Crear un préstamo o pedido; cada número de pieza se guarda como una fila |
 | PATCH | `/prestamos/{id}` | Actualizar el estado y la fecha de fin de un registro |
-| GET | `/salud` · `/salud/detalle` | Salud del sistema (el detalle, solo desde la PC del servidor) |
-| GET | `/monitoreo/*` | Pantalla Monitoreo y rastreo de un código de error (ver OBSERVABILIDAD.md) |
+| GET | `/salud` · `/salud/detalle` | Salud del sistema (`/salud` es pública; el detalle, con `monitoreo.ver`) |
+| GET | `/monitoreo/*` | Pantalla Monitoreo y rastreo de un código de error, con `monitoreo.ver` (ver OBSERVABILIDAD.md) |
 | POST | `/telemetria` | Mediciones del navegador (Web Vitals, errores, tiempos) |
 
 Ver documentación interactiva en http://localhost:8000/docs
@@ -93,6 +107,20 @@ Postgres corre como servicio de Windows (`postgresql-x64-18`) y arranca solo con
 Grafana corre en Docker y queda siempre prendido: se levanta una vez con
 `docker compose up -d` y después vuelve solo con Docker Desktop. Ver
 [OBSERVABILIDAD.md](OBSERVABILIDAD.md#14-trazas-con-opentelemetry-opcional).
+
+`CREDENTIALS_KEY` cifra los secretos de la base (los códigos de verificación y las cuentas
+de EPC, SAP y el localizador). Se genera una por PC y no se comparte:
+
+```bash
+uv run python -m app.cli generar-clave
+```
+
+El administrador de plataforma se crea solo desde la consola de la PC del servidor. Pide
+la contraseña ahí mismo y configura el código de verificación con el celular:
+
+```bash
+uv run python -m app.cli crear-admin
+```
 
 ```bash
 # Levantar servidor (al arrancar crea o actualiza las tablas)

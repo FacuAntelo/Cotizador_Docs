@@ -5,6 +5,15 @@ agregar y qué decidir. El sistema de observabilidad está en
 [OBSERVABILIDAD.md](OBSERVABILIDAD.md). El plan de usuarios, roles, permisos y organizaciones
 está en [USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md).
 
+## Estado (9 de noviembre de 2026, rama `feat/usuarios`)
+
+Hechos con la etapa 1 del login: `bind_user` en la dependencia global de autenticación
+(`app/core/auth.py`), que corre antes de los límites de uso, así cuentan por usuario;
+Monitoreo y `/salud/detalle` detrás de `monitoreo.ver`; el bloqueo por usuario, el mensaje
+único y los logins fallidos sin la contraseña en el log (puntos 1 a 4). La telemetría usa la
+cookie de la sesión, que viaja sola porque el front y la API están en el mismo nombre
+(punto 5). Falta la alerta de muchos logins fallidos, en la etapa 6.
+
 ## Lo que ya está preparado
 
 - **`user_id` en todas las tablas de observabilidad** (`request_log`, `llm_calls`,

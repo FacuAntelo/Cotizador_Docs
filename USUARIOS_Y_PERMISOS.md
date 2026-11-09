@@ -1,7 +1,8 @@
 # Usuarios, permisos y organizaciones — plan
 
-Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Todavía no hay
-nada construido.
+Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
+la rama `feat/usuarios` de los tres repositorios: la etapa 1 está hecha (ver
+[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1)).
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -418,6 +419,38 @@ revisarlas de a una.
    de solo Argentina, la alerta de muchos logins fallidos, la auditoría (`created_by`, `accepted_by`), Row Level Security antes
    del segundo cliente y el aviso de privacidad a los empleados (Ley 25.326). El túnel se prende
    al final de esta etapa.
+
+## Cómo quedó la etapa 1
+
+- **Rutas:** `/auth/login`, `/auth/salir`, `/auth/me`, `/auth/renovar`, `/auth/usar-aca`,
+  `/auth/confirmar-contrasena`, `/auth/contrasena`, `/auth/codigo-verificacion` (y `/activar`),
+  `/auth/sesiones` (Mis dispositivos) y `/auth/avisos-vistos`. Chrome llama solo a
+  `/auth/dbsc/registro` y `/auth/dbsc/renovar`.
+- **Cookies:** `__Host-oemia_sesion` (10 minutos, `Path=/`) y `__Secure-oemia_renovacion`
+  (solo para `/auth/renovar`, y se borra cuando la sesión queda atada a la PC).
+- **CSRF:** las escrituras exigen el header `X-OEMIA: 1`. No lo piden las de DBSC (las manda
+  Chrome por su cuenta) ni `/telemetria` (`sendBeacon` no puede agregar headers).
+- **Cada ruta declara su acceso** con `requires(...)`, `signed_in()` o `public()`
+  (`app/core/auth.py`), y `tests/integration/test_route_access.py` falla si alguna no lo hace.
+  Son públicas solo el login, las dos renovaciones, las de DBSC, `/salud`, la subida del agente
+  del DMS y `/telemetria`.
+- **Roles del sistema:** los escribe el backend al arrancar desde `app/core/permissions.py`.
+- **Costos:** sin `costos.ver`, `/precios/consultar` y `/precios/estado` mandan el costo y los
+  márgenes en `null`. Falta lo mismo en los pedidos, que hoy reciben el costo del front: va con
+  la etapa 2.
+- **Una PC que quedó afuera** recibe 409 `sesion_desplazada` con la otra PC (`otra_sesion`) y
+  puede salir, tocar «Usar acá» (sin contraseña, como estaba propuesto) o cerrar la otra («No
+  fui yo»). Si la otra PC sale, esta retoma sola.
+- **El registro de DBSC se ofrece solo al loguearse** y vale 5 minutos: si se ofreciera en
+  cualquier respuesta, alguien con la cookie copiada de un navegador sin DBSC podría atar la
+  sesión a su PC.
+- **DBSC solo anda con HTTPS.** En desarrollo (`http://localhost`) las sesiones quedan sin atar
+  y usan la renovación con el token que cambia. Se prueba de verdad con el túnel, en la etapa 6.
+- **`MONITOR_ALLOWED_HOSTS` salió del `.env`**; entraron `CREDENTIALS_KEY` (se genera con
+  `uv run python -m app.cli generar-clave`), las duraciones de las sesiones, el bloqueo y
+  `RETENTION_AUDIT_DAYS`.
+- **Las claves de `Settings` no se imprimen** (`repr=False`): antes, un error que mostraba la
+  configuración mostraba también las contraseñas de SAP y Simetrical.
 
 ## Decisiones tomadas
 
