@@ -259,36 +259,45 @@ las sesiones de login.
   tablas, que es lo previsto para productivo: las migraciones corren con el dueño y la app con
   un usuario con permisos mínimos.
 
-## HTTPS en la red local
+## Acceso desde internet
 
-Los vendedores entran desde otras PCs, así que sin HTTPS la contraseña viaja sin cifrar por la
-red y la cookie no puede ser `Secure`.
+Todos los usuarios, de cualquier sucursal y organización, entran a **esta PC por internet**, en
+un nombre de `oemia.com.ar` (propuesto: `app.oemia.com.ar`, para dejar `oemia.com.ar` libre
+para una web).
 
-- **Caddy** en esta PC sirve el front compilado y pasa `/api` al backend, que escucha solo en
-  `127.0.0.1` (con `--proxy-headers`, para ver la IP real de cada pedido).
-- **Un nombre por instalación**, por ejemplo `antelo.oemia.com.ar`, que apunta a la IP del
-  servidor en la red del cliente (`192.168.x.x`). Es uno por instalación porque el navegador
-  usa el nombre para encontrar el servidor, y cada cliente tiene el suyo en su red.
-- **Un certificado por instalación**, gratis de Let's Encrypt, que Caddy saca y renueva solo.
-  Un certificado vale para los nombres que lista: el de `oemia.com.ar` no sirve para
-  `antelo.oemia.com.ar`. Existe el comodín `*.oemia.com.ar`, que sirve para todos, pero no
-  conviene: la misma clave quedaría en la PC de cada cliente, y quien la copie de una puede
-  hacerse pasar por cualquier nombre del dominio. Además dura 90 días (Let's Encrypt lo va a
-  bajar a 45), y habría que volver a copiarlo a cada cliente en cada renovación.
-- **Cómo se comprueba que el dominio es nuestro:** como el sistema no se ve desde internet,
-  Let's Encrypt no puede entrar a mirar. Lo comprueba por DNS, con un registro temporal que
-  Caddy escribe solo. Para eso el DNS de `oemia.com.ar` pasa a Cloudflare (gratis), cambiando
-  sus servidores de DNS en NIC Argentina, y Caddy usa una clave de Cloudflare. Caddy necesita
-  el módulo `caddy-dns/cloudflare`, que se elige al bajarlo de caddyserver.com.
-- **La clave de Cloudflare no se puede limitar a un nombre:** edita todo el DNS de
-  `oemia.com.ar`. En la PC de Antelo no importa; en la de otro cliente no puede quedar
-  ([Abiertas](#abiertas), 1).
-- En las PCs de los vendedores no hay que instalar nada. Algunos routers bloquean nombres
-  públicos que apuntan a IPs de la red interna (protección contra DNS rebinding); si pasa,
-  se agrega el nombre en el DNS del router o en el archivo `hosts` de cada PC.
-- El firewall de Windows abre el 443 solo para la red local.
-- **Todo esto supone una sola red.** Un vendedor de una sucursal en otro edificio no llega a
-  `192.168.x.x`, y el agente del DMS de esa sucursal tampoco ([Abiertas](#abiertas), 2).
+- **Cloudflare Tunnel, sin abrir puertos.** El programa `cloudflared` corre como servicio de
+  Windows y abre una conexión de salida hacia Cloudflare. Los usuarios entran a Cloudflare, y
+  Cloudflare les pasa los pedidos a esta PC por esa conexión. En el router no se abre nada, la
+  IP de la oficina no queda a la vista y anda aunque el proveedor cambie la IP. Para eso el DNS
+  de `oemia.com.ar` pasa a Cloudflare (cuenta gratis, cambiando los servidores de DNS en NIC
+  Argentina).
+- **El certificado es uno para el dominio y lo pone Cloudflare**, gratis y renovado solo. De
+  Cloudflare a esta PC el túnel ya va cifrado.
+- **Nada escucha en la red:** Caddy en `127.0.0.1` sirve el front compilado y pasa `/api` al
+  backend, que también escucha en `127.0.0.1`. `cloudflared` le manda todo a Caddy.
+- **La IP real de cada pedido:** con el túnel todos llegan desde `127.0.0.1`, y la IP de quien
+  llama viene en el header `CF-Connecting-IP`. Hay que usarla en los límites de uso, el bloqueo
+  del login, los logs y Monitoreo; hoy se toma `request.client.host` (`app/core/access.py`,
+  `app/core/rate_limit.py` y el middleware de observabilidad). Se le puede creer al header
+  porque el backend solo escucha en `127.0.0.1`.
+- **Nada se publica antes del login.** Hoy cualquiera que llegue cotiza con las cuentas de EPC
+  y SAP, gasta la IA y ve los costos. Además `MONITOR_ALLOWED_HOSTS` deja ver Monitoreo desde
+  `127.0.0.1`, y con el túnel todo llega desde ahí: Monitoreo quedaría abierto a internet. El
+  túnel se prende con las etapas 1 a 4 en `main` y Monitoreo detrás de `monitoreo.ver`.
+- **En productivo se apagan `/docs`, `/redoc` y `/openapi.json`.**
+- **Los agentes del DMS** de cada sucursal suben el stock por internet a la dirección pública,
+  con su token.
+- **Cotizar responde en streaming** (`text/event-stream`). Hay que comprobar que pase por
+  Cloudflare sin demorarse y que ningún pedido quede más de 100 segundos sin responder, que es
+  lo que Cloudflare espera antes de cortar (error 524).
+- **Opcional:** una regla del firewall de Cloudflare que deje entrar solo desde Argentina saca
+  de encima a la mayoría de los bots. Un usuario de viaje no podría entrar.
+- **Esta PC pasa a ser el servidor de todos.** Si se apaga, se reinicia por una actualización o
+  se corta internet en Antelo, no cotiza nadie de ninguna sucursal. Hace falta que no se
+  suspenda, que las actualizaciones reinicien fuera de horario, una UPS y un respaldo de la
+  base fuera de esta PC.
+- EPC, SAP y el localizador siguen logueando desde esta PC, como hoy.
+- `CORS_ORIGINS` pasa a ser la dirección pública.
 
 ## Etapas
 
@@ -308,9 +317,10 @@ revisarlas de a una.
    el cotizador, costos y lista de precios según permiso, y Monitoreo dentro de Administración.
 5. **Administración:** organizaciones, sucursales, depósitos, agentes del DMS y usuarios, con
    los cupos.
-6. **HTTPS y cierre de seguridad:** Caddy, la alerta de muchos logins fallidos, la auditoría
-   (`created_by`, `accepted_by`), Row Level Security antes del segundo cliente y el aviso de
-   privacidad a los empleados (Ley 25.326).
+6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared` y Caddy,
+   la IP real desde `CF-Connecting-IP`, apagar `/docs`, la alerta de muchos logins fallidos, la
+   auditoría (`created_by`, `accepted_by`), Row Level Security antes del segundo cliente y el
+   aviso de privacidad a los empleados (Ley 25.326). El túnel se prende al final de esta etapa.
 
 ## Decisiones tomadas
 
@@ -321,27 +331,15 @@ revisarlas de a una.
 4. En el cotizador se ve el stock de **la sucursal propia, el resto de las sucursales y la
    planta**, y se puede expandir para ver cuánto tiene cada sucursal.
 5. Se entra con **usuario**, no con mail.
-6. Los vendedores entran desde otras PCs: hace falta **HTTPS en la red local**, con el dominio
-   `oemia.com.ar` y un certificado gratis de Let's Encrypt.
+6. **Todos entran por internet a esta PC**, con `oemia.com.ar` en Cloudflare y un Cloudflare
+   Tunnel. El certificado es uno para el dominio, el de Cloudflare.
 7. Se paga por dar de alta **sucursales** y **usuarios**. Los usuarios son de la organización
    y eligen en qué sucursal trabajan, entre las que tienen habilitadas.
 8. **Cada usuario carga sus cuentas** de EPC, SAP y el localizador; misma cuenta, misma sesión.
 9. El admin de la organización puede cargar las cuentas de un vendedor, sin poder verlas.
 10. **Cada sucursal incluye un usuario**; los demás se pagan aparte.
 11. El **código de concesionario de Nissan** va en cada sucursal y puede repetirse.
-12. **Un certificado por instalación**, no un comodín para todas.
 
 ## Abiertas
 
-1. **La clave de Cloudflare en la PC de otro cliente.** Resolverlo antes del segundo cliente.
-   Opciones:
-   - Delegar con un CNAME solo el registro `_acme-challenge` de cada instalación a un servicio
-     donde cada cliente tenga una clave que toque únicamente ese registro (acme-dns, o un DNS
-     con claves por registro).
-   - Sacar los certificados en una PC nuestra y mandárselos a cada instalación.
-2. **Sucursales en otros edificios.** ¿Las sucursales de un cliente están unidas por una red
-   (VPN)?
-   - Si lo están, alcanza con lo de arriba.
-   - Si no, el servidor tiene que estar en internet: un solo nombre para todos (tipo
-     `app.oemia.com.ar`) con un certificado común. Ahí cambia dónde corren el EPC y SAP, y el
-     agente del DMS sube por internet.
+1. **El nombre público:** `app.oemia.com.ar` u otro.
