@@ -147,6 +147,15 @@ En productivo, si algo de esto falla, **el backend no arranca** y el log dice qu
 - **Más adelante:** que GitHub Actions corra los tests en cada push y que la tarea de la noche
   publique solo commits con los tests en verde.
 
+## Si alguien pierde el celular
+
+- **Un usuario de una organización:** un Administrador le quita el código en Administración →
+  Usuarios → «Quitar código». Se le cierran todas las sesiones; entra con la contraseña y, si
+  quiere, configura un código nuevo en Mi cuenta.
+- **Un administrador de plataforma:** desde la consola de la PC de productivo,
+  `uv run python -m app.cli configurar-codigo`. Le cierra todas las sesiones. Desde la web no
+  se puede: la plataforma entra siempre con el código.
+
 ## Postgres
 
 *Pendiente (bloque 3 de la etapa 6).* Lo previsto, detallado en
@@ -200,6 +209,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-09 | Etapa 6, bloque 2: la plataforma entra siempre con el código, `configurar-codigo`, quitar el código desde Administración y «Usar acá» con contraseña. |
 | 2026-11-09 | El puerto sale del entorno: 8000 en productivo, 8001 en desarrollo. |
 | 2026-11-09 | Productivo va en una PC dedicada; la primera prueba, en la de desarrollo. Se publica solo de noche desde `main` (pendiente). |
 | 2026-11-09 | Etapa 6, bloque 1: `ENVIRONMENT`, `python -m app.server`, headers de seguridad, CSP, IP real desde Cloudflare, front servido por el backend, aviso «sigo» en Cotizar, alerta de ingresos fallidos y revisión de la configuración al arrancar. |
