@@ -475,7 +475,7 @@ Postgres 18 (`DATABASE_URL`), con SQLAlchemy 2, el driver psycopg y migraciones 
 
 Hay dos schemas: `app`, con el negocio (el de todos los modelos que no digan otro), y `observability`, con la telemetría. `public` no existe: la migración inicial lo elimina, así que toda tabla y toda consulta dice su schema (`app.estimates`). En `psql`, `SET search_path TO app, observability;` evita escribirlo en cada consulta. Una extensión nueva se instala en un schema explícito (`CREATE EXTENSION pg_trgm SCHEMA app`).
 
-La historia anterior (24 migraciones, de la época de SQLite) quedó en git: `0001_esquema_inicial` es el punto de partida en Postgres. El 6 de noviembre de 2026 la instalación pasó a Postgres arrancando de cero: los datos de SQLite no se copiaron y `data/cotizador.db` quedó sin usar.
+La historia anterior (24 migraciones, de la época de SQLite) quedó en git: `0001_esquema_inicial` es el punto de partida en Postgres. El 6 de noviembre de 2026 la instalación pasó a Postgres arrancando de cero: los datos de SQLite no se copiaron y el 8 de noviembre se borró `data/cotizador.db`.
 
 Las tablas sin prefijo están en `app`.
 
