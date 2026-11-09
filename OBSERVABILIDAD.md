@@ -467,9 +467,10 @@ tarda el 5 % más lento (la experiencia de los peores casos).
 Un stream de cotización que falla después de responder 200 (el error viaja dentro del
 stream) cuenta como error igual.
 
-Ojo: detrás de un proxy en la misma PC todos los pedidos llegan desde `127.0.0.1` y
-cualquiera vería Monitoreo; en ese caso, activar `--proxy-headers` en uvicorn o esperar al
-login.
+Detrás de Cloudflare Tunnel todos los pedidos llegan desde `127.0.0.1`: la IP que se guarda
+es la de `CF-Connecting-IP` (`app/core/client_ip.py`). No activar `--proxy-headers` en
+uvicorn: le cree a `X-Forwarded-For`, que el usuario puede inventar. Monitoreo está detrás del
+login y del permiso `monitoreo.ver`.
 
 ---
 
@@ -485,6 +486,7 @@ login.
 | `cotizaciones_lentas` | advertencia | El p95 de las cotizaciones pasó 20 s en la última hora (con al menos 5) | `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES` |
 | `gasto_ia` | advertencia / crítica | El gasto del día llegó al 80 % / 100 % del tope | `LLM_BUDGET_WARN_RATIO`, `LLM_DAILY_BUDGET_USD` |
 | `login_epc`, `login_sap`, `login_localizador` | crítica | Fallaron los últimos 3 logins seguidos | `ALERT_LOGIN_FAILURES` |
+| `ingresos_fallidos` | advertencia | Hubo 20 ingresos fallidos al cotizador (contraseña o código mal, usuarios que no existen) en los últimos 15 min, sumando todas las organizaciones. Dice desde cuántas IPs: muchas es un ataque repartido. Cada intento ya lo frenan el límite por IP y el bloqueo del usuario; esto avisa que está pasando | `ALERT_USER_LOGIN_FAILURES` (0 la apaga), `ALERT_USER_LOGIN_WINDOW_MINUTES` |
 | `login_bloqueado_sap`, `login_bloqueado_localizador` | crítica | Se rechazó el usuario o la cuenta está bloqueada y se dejó de reintentar. **Avisa en el momento**, sin esperar la revisión | — |
 | `stock_taller_desactualizado` | advertencia | El stock del DMS está desactualizado en horario de atención | `ALERT_DMS_BUSINESS_HOURS` (`08-19`), `ALERT_DMS_BUSINESS_DAYS` |
 | `event_loop_bloqueado` | advertencia | El loop se atrasó más de 1 s | `ALERT_LOOP_LAG_MS` |

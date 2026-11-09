@@ -63,8 +63,8 @@ uv init
 uv add fastapi
 uv add --dev pytest ruff
 
-# Correr el proyecto
-uv run uvicorn main:app --reload
+# Correr el proyecto (nunca `uvicorn main:app`: ver PRODUCCION.md)
+uv run --extra otel python -m app.server --recargar
 
 # Sincronizar entorno desde lockfile
 uv sync
