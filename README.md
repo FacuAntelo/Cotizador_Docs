@@ -23,15 +23,15 @@ Todas piden login salvo las marcadas como públicas; cada una exige su permiso (
 | POST | `/match` | Texto libre → repuestos identificados + familias |
 | POST | `/epc` | Chasis + familias → números de pieza completos |
 | POST | `/cotizar` | **Endpoint principal:** texto libre + chasis → números de pieza |
-| PUT | `/dms/stock` | El agente del taller sube la foto completa del stock (con token) |
-| POST | `/dms/stock` | Números de pieza → stock del taller por depósito |
-| GET | `/dms/stock/estado` | Cuándo llegó la última foto del stock del taller |
+| PUT | `/dms/stock` | Pública. El agente de una sucursal sube la foto completa de su stock (con su token) |
+| POST | `/dms/stock` | Números de pieza → stock de la sucursal activa, de las demás y de cada una |
+| GET | `/dms/stock/estado` | Cuándo llegó la última foto del stock de la sucursal activa |
 | GET | `/presupuestos/siguiente-numero` | Número que le toca al próximo presupuesto |
-| GET | `/presupuestos` | Presupuestos guardados (`buscar` por número, cliente, teléfono, vehículo, patente o VIN) |
+| GET | `/presupuestos` | Presupuestos de toda la organización (`buscar` por número, cliente, teléfono, vehículo, patente o VIN; `sucursal` filtra) |
 | GET | `/presupuestos/{numero}` | Un presupuesto guardado, con sus renglones |
 | POST | `/presupuestos` | Guardar un presupuesto nuevo (sin número toma el siguiente; 409 si el número existe) |
 | PUT | `/presupuestos/{numero}` | Actualizar un presupuesto guardado |
-| GET / PUT | `/presupuestos/concesionario` | Datos y logo del concesionario que encabezan los presupuestos |
+| GET / PUT | `/presupuestos/concesionario` | Datos de la organización y de la sucursal que encabezan los presupuestos (el PUT cambia los de la sucursal) |
 | GET / POST | `/aseguradoras` | Compañías de seguro para el presupuesto (agregar no repite mayúsculas) |
 | POST | `/presupuestos/{numero}/aceptado` | Aceptar el presupuesto guardado para habilitar pedidos, con las respuestas del cuestionario del seguro |
 | GET / PUT | `/presupuestos/{numero}/aceptacion` | Franquicia, inspección final, pago del seguro y excluidos |

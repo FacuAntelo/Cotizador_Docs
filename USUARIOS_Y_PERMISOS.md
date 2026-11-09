@@ -1,8 +1,8 @@
 # Usuarios, permisos y organizaciones — plan
 
 Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
-la rama `feat/usuarios` de los tres repositorios: la etapa 1 está hecha (ver
-[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1)).
+la rama `feat/usuarios` de los tres repositorios: las etapas 1 y 2 están hechas (ver
+[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1) y [la 2](#cómo-quedó-la-etapa-2)).
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -436,8 +436,7 @@ revisarlas de a una.
   del DMS y `/telemetria`.
 - **Roles del sistema:** los escribe el backend al arrancar desde `app/core/permissions.py`.
 - **Costos:** sin `costos.ver`, `/precios/consultar` y `/precios/estado` mandan el costo y los
-  márgenes en `null`. Falta lo mismo en los pedidos, que hoy reciben el costo del front: va con
-  la etapa 2.
+  márgenes en `null` (los pedidos, desde la etapa 2).
 - **Una PC que quedó afuera** recibe 409 `sesion_desplazada` con la otra PC (`otra_sesion`) y
   puede salir, tocar «Usar acá» (sin contraseña, como estaba propuesto) o cerrar la otra («No
   fui yo»). Si la otra PC sale, esta retoma sola.
@@ -451,6 +450,41 @@ revisarlas de a una.
   `RETENTION_AUDIT_DAYS`.
 - **Las claves de `Settings` no se imprimen** (`repr=False`): antes, un error que mostraba la
   configuración mostraba también las contraseñas de SAP y Simetrical.
+
+## Cómo quedó la etapa 2
+
+- **Migración 0003:** la organización y la sucursal entran obligatorias en las tablas del
+  negocio, sin pasar datos (la base estaba vacía). `dealer_profile` y `dms_deposits` se borran.
+- **Cada ruta recibe de quién son los datos** (`OrgScope` o `BranchScope`, en
+  `app/core/auth.py`). Los repositorios filtran por la organización (o la sucursal); lo de otra
+  organización da 404. Un usuario sin organización recibe 403 `sin_organizacion` y uno sin
+  sucursal, 409 `sin_sucursal`.
+- **Presupuestos:** número por organización (`uq_estimates_org_number`) con un bloqueo por
+  organización; uno nuevo queda en la sucursal activa, con `created_by`; aceptarlo guarda
+  `accepted_by`. La lista es de toda la organización, con la sucursal de cada uno y el filtro
+  `sucursal`.
+- **Datos del concesionario:** `GET /presupuestos/concesionario` arma la razón social, el CUIT y
+  el logo de la organización con la dirección, el teléfono, el mail y la hora de mano de obra de
+  la sucursal. El `PUT` cambia solo lo de la sucursal: lo de la organización se cambia en
+  Administración.
+- **Lista de precios:** una sola, la carga la plataforma (`POST /precios/cargar`, pide la
+  contraseña de nuevo; `GET /precios/lista` para verla). El margen y la estrategia son de cada
+  organización (`PATCH /precios/margen` y `/estrategia`, con `precios.gestionar`).
+- **Pedidos:** sin `costos.ver`, la vista previa y el seguimiento no muestran el costo, y al
+  confirmar el Excel el backend toma el costo de la lista de precios (no le cree al front).
+  Los Excel guardan `created_by`.
+- **Stock del taller:** un agente por sucursal con su token (`dms_agents`, se genera con
+  `uv run python -m app.cli crear-agente-dms` hasta que esté Administración), depósitos por
+  sucursal que se crean solos, y la consulta con la sucursal activa, las demás y el detalle de
+  cada una. La frescura, la salud, Monitoreo y la alerta son por sucursal.
+- **SAP** consulta con el código de la sucursal activa; **el localizador** mide desde su
+  ubicación y marca como propias las sucursales de la organización.
+- **El cupo:** `BranchRepository.seats_in_use` cuenta los usuarios activos con el rol Cotizador;
+  el alta de usuarios lo va a respetar (etapa 5).
+- **Observabilidad:** `request_log`, `dependency_events`, `frontend_events`, `llm_calls` y
+  `quote_runs` guardan la organización (y los costos de la IA, la sucursal).
+- **Salieron del `.env`:** `SAP_DEALER_CODE`, `LOCALIZADOR_ORIGEN_LAT`, `LOCALIZADOR_ORIGEN_LON`,
+  `DMS_EXCLUDED_DEPOSITS`, `DMS_IGNORED_DEPOSITS` y `DMS_AGENT_TOKEN`.
 
 ## Decisiones tomadas
 
