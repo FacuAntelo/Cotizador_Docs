@@ -528,7 +528,7 @@ Dos escrituras están pensadas para muchos usuarios:
 
 ### Lo que cambia con organizaciones, sucursales y usuarios
 
-El esquema es de un solo concesionario. Antes de sumar esas tablas hay que decidir de quién es cada dato:
+El plan acordado está en [USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md). El esquema es de un solo concesionario. Antes de sumar esas tablas hay que decidir de quién es cada dato:
 
 | Hoy | Por qué hay que tocarlo |
 |---|---|
