@@ -52,7 +52,8 @@ Todas piden login salvo las marcadas como públicas; cada una exige su permiso (
 | GET | `/monitoreo/*` | Pantalla Monitoreo y rastreo de un código de error, con `monitoreo.ver` (ver OBSERVABILIDAD.md) |
 | POST | `/telemetria` | Mediciones del navegador (Web Vitals, errores, tiempos) |
 
-Ver documentación interactiva en http://localhost:8000/docs
+Ver documentación interactiva en http://127.0.0.1:8001/docs (solo en desarrollo; en productivo
+está apagada)
 
 ## Requisitos
 
@@ -123,9 +124,13 @@ uv run python -m app.cli crear-admin
 
 ```bash
 # Levantar servidor (al arrancar crea o actualiza las tablas). La API queda bajo /api.
-uv run uvicorn main:app --reload
-# → http://localhost:8000/api/salud
+uv run --extra otel python -m app.server
+# → http://127.0.0.1:8001/api/salud (en desarrollo; productivo usa el 8000)
+# --recargar: se reinicia al guardar un cambio (vuelve a loguear EPC y SAP).
 ```
+
+O el backend y el front juntos, cada uno en su ventana: `.\scripts\desarrollo.ps1`.
+En productivo: [PRODUCCION.md](PRODUCCION.md).
 
 ### 2. Frontend
 

@@ -4,8 +4,11 @@ Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. 
 se construyeron en la rama `feat/usuarios` de los tres repositorios y se mergearon a `main` el 9
 de noviembre (ver [Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
 [la 3](#cómo-quedó-la-etapa-3), [la 4](#cómo-quedó-la-etapa-4) y
-[la 5](#cómo-quedó-la-etapa-5)). Falta la 6: publicar en internet y reforzar Postgres.
-Lo que queda por resolver está en [Abiertas](#abiertas).
+[la 5](#cómo-quedó-la-etapa-5)). La 6, publicar en internet y reforzar Postgres, está en curso
+en la rama `feat/publicar` (ver [Cómo va la etapa 6](#cómo-va-la-etapa-6)). Lo que queda por
+resolver está en [Abiertas](#abiertas) y lo que se dejó para después, en
+[Pendientes](#pendientes). La configuración de productivo está en
+[PRODUCCION.md](PRODUCCION.md).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
 
@@ -198,8 +201,11 @@ agente del DMS, que usa su propio token.
 - **Un solo lugar a la vez.** El usuario tiene una sola sesión en uso (`users.active_session_id`).
   Al entrar desde otra PC, la anterior deja de andar y muestra «Tu usuario se abrió en otra
   PC»; el front se entera en su próximo pedido o en menos de 30 segundos. Si vuelve a la
-  primera PC, toca **Usar acá** y la retoma sin escribir la contraseña, porque esa PC sigue
-  recordada; la otra queda afuera. Varias pestañas del mismo navegador son la misma sesión.
+  primera PC, **tiene que ingresar de nuevo**, con la contraseña y el código si lo tiene; la
+  otra queda afuera. Es a propósito: un usuario no se comparte entre varias PCs con solo tocar
+  un botón, porque el concesionario paga un usuario por cada persona que cotiza (decisión 21;
+  hasta la etapa 6 bastaba con «Usar acá»). Varias pestañas del mismo navegador son la misma
+  sesión.
   Si alguien entra con la contraseña de otro, el dueño lo nota porque lo sacan.
 - **Mis dispositivos**, en Mi cuenta: cada PC recordada con navegador, IP y último uso, y un
   botón para cerrarla. Un Administrador puede cerrar todas las de un usuario de su
@@ -442,10 +448,11 @@ una web.
   así la cookie viaja igual que en productivo.
 - **Publicar una versión nueva:** `npm run build` y reiniciar el backend.
 - **La IP real de cada pedido:** con el túnel todos llegan desde `127.0.0.1`, y la IP de quien
-  llama viene en el header `CF-Connecting-IP`. Hay que usarla en los límites de uso, el bloqueo
-  del login, los logs y Monitoreo; hoy se toma `request.client.host` (`app/core/access.py`,
-  `app/core/rate_limit.py` y el middleware de observabilidad). Se le puede creer al header
-  porque el backend solo escucha en `127.0.0.1`.
+  llama viene en el header `CF-Connecting-IP`. La usan los límites de uso, el bloqueo del
+  login, los logs y Monitoreo, desde un solo lugar (`app/core/client_ip.py`), y solo si el
+  pedido viene de esta PC. `X-Forwarded-For` no se usa: lo puede inventar el usuario. Por eso
+  el backend se levanta con `python -m app.server`, que apaga los «proxy headers» de uvicorn
+  (hecho en la etapa 6).
 - **Nada se publica antes del login.** Hoy cualquiera que llegue cotiza con las cuentas de EPC
   y SAP, gasta la IA y ve los costos. Además `MONITOR_ALLOWED_HOSTS` deja ver Monitoreo desde
   `127.0.0.1`, y con el túnel todo llega desde ahí: Monitoreo quedaría abierto a internet. El
@@ -494,13 +501,22 @@ revisarlas de a una.
 5. **Administración:** organizaciones, sucursales, depósitos, agentes del DMS, usuarios con sus
    roles y el cupo, la carga de la lista de precios y las compatibilidades, y el registro de
    seguridad.
-6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared`, el
-   backend entregando el front, la IP real desde `CF-Connecting-IP`, apagar `/docs`, la regla
-   de solo Argentina, la alerta de muchos logins fallidos, exigir al entrar el código de
-   verificación de la plataforma, que un Administrador pueda quitarle el código a quien perdió
-   el celular, la [seguridad en Postgres](#seguridad-en-postgres) (solo local, un usuario para
-   cada cosa, el registro que no se puede borrar y Row Level Security) y el aviso de privacidad
-   a los empleados (Ley 25.326). El túnel se prende al final de esta etapa.
+6. **Publicar en internet y cierre de seguridad**, en bloques (ver
+   [Cómo va la etapa 6](#cómo-va-la-etapa-6)):
+   1. Backend listo para internet: entorno de productivo, el backend entregando el front,
+      headers de seguridad, la IP real desde `CF-Connecting-IP`, apagar `/docs`, el «sigo» de
+      Cotizar para Cloudflare, la alerta de muchos ingresos fallidos, los scripts de
+      desarrollo y productivo, y [PRODUCCION.md](PRODUCCION.md) con toda la configuración.
+   2. Código de verificación y sesiones: exigir al entrar el código de la plataforma, que un
+      Administrador pueda quitarle el código a quien perdió el celular, y que volver a una PC
+      desplazada pida ingresar de nuevo (decisión 21).
+   3. La [seguridad en Postgres](#seguridad-en-postgres): solo local, un usuario para cada
+      cosa, el registro que no se puede borrar y Row Level Security.
+   4. Lo que hace el usuario: Cloudflare y el DNS, `cloudflared`, Postgres solo local, el
+      backend al prender la PC, la PC como servidor y cargar la base.
+   5. Pruebas por internet (DBSC, Cotizar sin error 524, el agente del DMS) y prender el túnel.
+
+   El aviso de privacidad a los empleados salió de esta etapa (ver [Pendientes](#pendientes)).
 
 ## Cómo quedó la etapa 1
 
@@ -596,7 +612,7 @@ revisarlas de a una.
 
 - **La API va bajo `/api`** (`app/core/paths.py`). Los límites de uso, los registros y la
   configuración siguen nombrando las rutas sin el prefijo. En desarrollo el servidor de Vite
-  pasa `/api` a `127.0.0.1:8000` (`vite.config.ts`, y `VITE_API_URL=/api` en
+  pasa `/api` al backend de desarrollo, hoy en `127.0.0.1:8001` (`vite.config.ts`, y `VITE_API_URL=/api` en
   `.env.development`): el front y la API quedan en el mismo nombre, como en productivo.
 - **`npm run gen:api`** (`scripts/gen-api.mjs`) genera los tipos sin el prefijo, y el documento
   de `/telemetria` ya no rompe la generación.
@@ -664,6 +680,44 @@ revisarlas de a una.
   administrador de plataforma sin código de verificación que existe solo en la base de
   desarrollo.
 
+## Cómo va la etapa 6
+
+En la rama `feat/publicar` de los tres repositorios.
+
+**Bloque 1, backend listo para internet (hecho):**
+
+- **`ENVIRONMENT=produccion`** (acepta el nombre viejo, `OTEL_ENVIRONMENT`): sin `/docs`,
+  `/redoc` ni `/openapi.json`; solo se atienden pedidos que vienen de esta PC (por
+  `cloudflared`), los demás reciben 403; manda HSTS; y el backend no arranca si la
+  configuración es insegura (`app/core/production.py`: `CORS_ORIGINS` con `*` o sin https,
+  `SERVER_HOST` fuera de esta PC, sin el front compilado, sin `CREDENTIALS_KEY` o con los
+  límites apagados).
+- **`python -m app.server`** levanta el backend con lo importante fijo: `SERVER_HOST`
+  (127.0.0.1), sin los «proxy headers» de uvicorn, sin el header `server` y hasta 30 segundos
+  de espera al apagar. `--recargar` solo en desarrollo.
+- **El backend entrega el front** desde `FRONTEND_DIST` (`app/core/frontend.py`): `assets/`
+  con caché de un año, `index.html` sin caché, las pantallas devuelven `index.html` y una ruta
+  de la API que no existe sigue siendo un 404 en JSON. Es un `Mount`: no pasa por la sesión
+  ni por los límites. Esos archivos no se guardan en `request_log` (solo los 500).
+- **Headers de seguridad** en todas las respuestas (`app/core/web_security.py`) y
+  **Content-Security-Policy** en las páginas, con el hash del script del tema calculado del
+  `index.html` compilado. `base-uri 'self'` y no `'none'`: `html-to-image` usa un `<base>`
+  propio para leer las fuentes del PDF. Probado en el navegador con el front compilado: el
+  tema oscuro y el PDF del presupuesto andan sin violaciones.
+- **La IP real** desde `CF-Connecting-IP` (`app/core/client_ip.py`), también en el
+  middleware de observabilidad, que antes tomaba la de la conexión.
+- **El «sigo» de Cotizar** (`app/core/sse.py`, `SSE_KEEPALIVE_SECONDS`): el generador corre en
+  una sola tarea aparte y una cola le pasa los eventos; si pasan 20 segundos sin eventos se
+  manda un comentario SSE. Si el usuario cierra la pestaña, la tarea se cancela.
+- **Alerta `ingresos_fallidos`:** `ALERT_USER_LOGIN_FAILURES` ingresos fallidos en
+  `ALERT_USER_LOGIN_WINDOW_MINUTES`, de todas las organizaciones, dice desde cuántas IPs.
+- **Scripts:** `scripts/desarrollo.ps1` (backend y front en dos ventanas; revisa Postgres y
+  no arranca con un `.env` de productivo) y `scripts/produccion.ps1` (para la tarea
+  programada; no arranca sin `ENVIRONMENT=produccion`).
+- **[PRODUCCION.md](PRODUCCION.md):** toda la configuración de productivo, con su porqué.
+- Los tests corren como desarrollo y sin el front compilado aunque el `.env` sea de
+  productivo (`tests/conftest.py`).
+
 ## Decisiones tomadas
 
 1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
@@ -697,9 +751,40 @@ revisarlas de a una.
 20. **Postgres se refuerza antes de publicar, con Row Level Security incluido** (no se espera al
     segundo cliente): solo conexiones locales, un usuario de Postgres para cada cosa y el
     registro de seguridad que la app no puede borrar.
+21. **Volver a una PC desplazada pide ingresar de nuevo** (contraseña y código si lo tiene), no
+    alcanza con «Usar acá» (9 de noviembre de 2026). Es fricción a propósito: si bastara un
+    botón, un solo usuario se usaría en varias PCs, y el concesionario paga por usuario.
+22. **El aviso de privacidad a los empleados (Ley 25.326) sale de la etapa 6** y queda pendiente
+    hasta definir quién es el responsable de los datos: OEMIA como empresa todavía no está
+    constituida y al principio puede ser el dueño como monotributista.
+23. **Restablecer la contraseña por mail** va después de publicar, junto con las alertas por
+    mail: las dos necesitan un servicio de envío de mails y el DNS del dominio en Cloudflare.
+    Mientras tanto, la resetea un Administrador.
+24. **Productivo va en una PC dedicada**, no en la de desarrollo. La primera prueba en internet
+    se hace en la de desarrollo, con Cloudflare apuntando a ella, y después se pasa (ver
+    [PRODUCCION.md](PRODUCCION.md#dónde-vive-cada-cosa)).
+25. **`main` es el código de productivo y se publica solo, de noche**, con una tarea en la PC
+    de productivo que busca los cambios, respalda la base, actualiza y vuelve atrás si falla;
+    lo urgente se publica a mano. Los tests en GitHub Actions como condición para publicar,
+    más adelante (ver [PRODUCCION.md](PRODUCCION.md#publicar-una-versión-nueva)).
+26. **Productivo usa el puerto de siempre (8000) y desarrollo uno fijo propio (8001)**, sin
+    configurar nada (`SERVER_PORT` vacío): productivo no se toca, los dos pueden correr en la
+    misma PC y el front de desarrollo nunca le habla a la base de los clientes.
 
 ## Abiertas
 
-1. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
-   la contraseña de nuevo.
-2. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
+1. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto, ya
+   anda así).
+
+## Pendientes
+
+Lo que se decidió dejar para después de la etapa 6:
+
+1. **Aviso de privacidad a los empleados** (Ley 25.326): qué datos se guardan (usuario,
+   nombre, IP, dispositivo, ingresos, cotizaciones, registro de seguridad), para qué, cuánto
+   tiempo, quién es el responsable y cómo pedir acceso, corrección o borrado. Espera a que se
+   defina el responsable (decisión 22). Conviene que lo revise un abogado.
+2. **Restablecer la contraseña por mail** y **las alertas por mail** (decisión 23).
+3. **La publicación automática de noche** y la deploy key de solo lectura (decisión 25).
+4. **Los tests en GitHub Actions** como condición para publicar (decisión 25).
+5. **Pasar productivo a la PC dedicada** después de la primera prueba (decisión 24).

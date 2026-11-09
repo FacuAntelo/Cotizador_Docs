@@ -15,7 +15,7 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 - **Base de datos:** Postgres 18 con SQLAlchemy 2, psycopg y migraciones de Alembic (ver [Base de datos](#base-de-datos))
 - **Observabilidad:** logs estructurados, medición de cada request, costos de la IA, límites de uso, alertas y pantalla Monitoreo, sin infraestructura externa; trazas OpenTelemetry opcionales (ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md))
 - **Linting:** Ruff
-- **Puerto backend:** 8000 | **Puerto frontend:** 5173
+- **Puerto backend:** 8001 en desarrollo y 8000 en productivo (`SERVER_PORT` vacío) | **Puerto frontend:** 5173
 
 ---
 
@@ -431,8 +431,10 @@ cd backend
 pip install uv          # solo la primera vez
 uv sync                 # instala todas las deps desde pyproject.toml
 # Copiar .env.example → .env y completar valores
-uv run uvicorn main:app --reload
+uv run --extra otel python -m app.server   # --recargar para reiniciar al guardar
 ```
+
+O los dos juntos: `.\scripts\desarrollo.ps1` (en `Cotizador_BE`). Productivo: [PRODUCCION.md](PRODUCCION.md).
 
 **Frontend:**
 ```bash
