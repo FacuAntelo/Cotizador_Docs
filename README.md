@@ -92,14 +92,23 @@ CREDENTIALS_KEY=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false
-DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
+DATABASE_URL=postgresql+psycopg://cotizador_dev_app:cotizador_dev_app@127.0.0.1:5432/cotizador_dev
+SYSTEM_DATABASE_URL=postgresql+psycopg://cotizador_dev_sistema:cotizador_dev_sistema@127.0.0.1:5432/cotizador_dev
+MIGRATIONS_DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
 ```
 
-Una sola vez, el usuario y la base de desarrollo. Pide la contraseña de `postgres`; el
+Una sola vez, el dueño y la base de desarrollo. Pide la contraseña de `postgres`; el
 usuario `cotizador_dev` puede crear bases para que los tests armen la suya:
 
 ```powershell
 psql -h 127.0.0.1 -U postgres -c "CREATE ROLE cotizador_dev LOGIN CREATEDB PASSWORD 'cotizador_dev'" -c "CREATE DATABASE cotizador_dev OWNER cotizador_dev LOCALE_PROVIDER icu ICU_LOCALE 'es-AR' TEMPLATE template0"
+```
+
+Y los usuarios de la app (con Row Level Security) y del sistema, que también usan los tests.
+Pide la contraseña de `postgres` y escribe las tres URLs en el `.env`:
+
+```powershell
+uv run python scripts/preparar_postgres.py desarrollo
 ```
 
 Postgres corre como servicio de Windows (`postgresql-x64-18`) y arranca solo con la PC.

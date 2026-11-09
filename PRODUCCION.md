@@ -64,7 +64,9 @@ tener presente. El resto queda como en `.env.example`.
 | `CORS_ORIGINS` | `https://app.oemia.com.ar` | Con el front y la API en la misma dirección no hace falta CORS. Nunca `*` ni `http`. |
 | `CREDENTIALS_KEY` | clave secreta | Cifra las cuentas de EPC, SAP, el localizador y los códigos de verificación. Si se pierde, cada usuario vuelve a cargar sus cuentas. Copia fuera de la PC. |
 | `ANTHROPIC_API_KEY` | clave secreta | La IA. |
-| `DATABASE_URL` | usuario de la app | En el bloque 3 de la etapa 6 pasa a un usuario de Postgres con permisos mínimos (pendiente). |
+| `DATABASE_URL` | `cotizador_app` en la base `cotizador` | Solo filas, con Row Level Security. La escribe `scripts/preparar_postgres.py`. |
+| `SYSTEM_DATABASE_URL` | `cotizador_sistema` | Lo que no es de una sola organización (login, agente del DMS, alertas, consola, plataforma). Se saltea RLS. |
+| `MIGRATIONS_DATABASE_URL` | `cotizador_owner` | El dueño de las tablas: migraciones, particiones y limpieza. El backend no arranca si las tres no usan usuarios distintos. |
 | `RATE_LIMIT_ENABLED` | `true` | Sin límites, cualquiera prueba contraseñas sin parar o gasta la IA. El backend no arranca con `false`. |
 | `RATE_LIMIT_LOGIN` | `5/15min` | Intentos de ingreso por IP (la IP real, ver abajo). |
 | `AUTH_LOCKOUT_FAILURES` / `AUTH_LOCKOUT_MINUTES` | `5` / `15` | Contraseñas mal seguidas que bloquean el usuario, y por cuánto. |
@@ -107,8 +109,14 @@ En productivo, si algo de esto falla, **el backend no arranca** y el log dice qu
 - Está el front compilado en `FRONTEND_DIST`.
 - Está `CREDENTIALS_KEY`.
 - `RATE_LIMIT_ENABLED` prendido.
+- Están `SYSTEM_DATABASE_URL` y `MIGRATIONS_DATABASE_URL`, y las tres URLs de la base usan
+  usuarios distintos.
+- Ya conectado a Postgres (`app/database/roles.py`): el usuario de la app no es dueño de
+  tablas, no es superusuario, no puede crear usuarios ni bases y no se saltea Row Level
+  Security; el de sistema sí se lo saltea.
 
-`CORS_ORIGINS` con `*` no arranca ni en desarrollo.
+`CORS_ORIGINS` con `*` no arranca ni en desarrollo. En desarrollo, lo de Postgres solo avisa en
+el log.
 
 ## Cómo se levanta
 
@@ -158,14 +166,33 @@ En productivo, si algo de esto falla, **el backend no arranca** y el log dice qu
 
 ## Postgres
 
-*Pendiente (bloque 3 de la etapa 6).* Lo previsto, detallado en
-[Seguridad en Postgres](USUARIOS_Y_PERMISOS.md#seguridad-en-postgres):
+Detalle y motivos en [Seguridad en Postgres](USUARIOS_Y_PERMISOS.md#seguridad-en-postgres).
+
+**Usuarios y base** (bloque 3, hecho; en productivo se corre en el bloque 4). Con la carpeta de
+productivo y su `.env` (que dice `ENVIRONMENT=produccion`), desde esa carpeta:
+
+```powershell
+uv run python scripts/preparar_postgres.py productivo --env C:\ruta\de\productivo\Cotizador_BE\.env
+```
+
+Pide la contraseña de `postgres` (no se muestra ni se guarda) y:
+
+| Qué | Cómo queda |
+|---|---|
+| `cotizador_owner` | Dueño de la base `cotizador` y de sus tablas. Migraciones, particiones mensuales y limpieza de lo vencido. Hasta 5 conexiones, sin límite de tiempo (una migración puede tardar). |
+| `cotizador_app` | Solo leer, agregar, cambiar y borrar filas, con Row Level Security. En `audit_log`, solo agregar y leer. Nada de crear o borrar tablas, usuarios ni bases. 60 segundos por consulta y por transacción sin hacer nada; hasta 30 conexiones. |
+| `cotizador_sistema` | Lo mismo que la app, pero se saltea Row Level Security. |
+| Base `cotizador` | UTF-8 y orden en español (ICU `es-AR`). Solo se conectan esos tres usuarios. |
+| Contraseñas | Largas al azar, en el `.env` de productivo y en ningún otro lado. Volver a correr el script no las cambia. Copia fuera de la PC, junto con `CREDENTIALS_KEY`. |
+
+Los permisos sobre las tablas los da el backend cada vez que arranca, y antes de atender
+revisa los usuarios: si la app es dueña de tablas, superusuario o se saltea RLS, o si el
+sistema no se lo saltea, no arranca.
+
+**Pendiente (bloque 4, lo hace el usuario):**
 
 - `listen_addresses = 'localhost'` y `pg_hba.conf` solo con `127.0.0.1/32` y `::1/128`
   (`scram-sha-256`); `log_connections = on`.
-- Tres usuarios: dueño (migraciones y mantenimiento), app (solo filas, con Row Level Security)
-  y sistema (lo que no es de una sola organización).
-- Límites de tiempo por consulta y de conexiones para la app.
 - Contraseña fuerte para `postgres`, guardada fuera de la PC.
 
 ## Cloudflare
@@ -202,6 +229,8 @@ Después de cualquier cambio de configuración:
 3. Ingresar con una contraseña mal y ver en Administración → Registro de seguridad que la IP es
    la real y no `127.0.0.1`.
 4. Desde otra PC de la red, `http://<IP de la PC de productivo>:5432` y `:8000` no responden.
+5. El log del arranque no dice «Los usuarios de Postgres no sirven» ni «Row Level Security no
+   se aplica».
 
 *Pendiente:* un comando que revise todo esto solo, incluido lo de Postgres y Windows.
 
@@ -209,6 +238,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-09 | Etapa 6, bloque 3: tres usuarios de Postgres (app con Row Level Security, sistema y dueño), `scripts/preparar_postgres.py` y la base nueva `cotizador`. |
 | 2026-11-09 | Etapa 6, bloque 2: la plataforma entra siempre con el código, `configurar-codigo`, quitar el código desde Administración y «Usar acá» con contraseña. |
 | 2026-11-09 | El puerto sale del entorno: 8000 en productivo, 8001 en desarrollo. |
 | 2026-11-09 | Productivo va en una PC dedicada; la primera prueba, en la de desarrollo. Se publica solo de noche desde `main` (pendiente). |

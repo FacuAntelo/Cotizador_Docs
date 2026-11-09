@@ -400,10 +400,10 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
 `AND organization_id = <la del pedido>` y no devuelve nada.
 
 - **Cómo sabe Postgres de qué organización es el pedido:** al empezar cada transacción, el
-  backend fija `SET LOCAL app.organization_id = '<id>'` con la organización del usuario. Lo
-  hace un solo lugar (un evento de la sesión de SQLAlchemy que lee la organización del pedido
-  desde una `ContextVar`), así los repositorios no cambian. Sin ese valor, las tablas del
-  negocio no devuelven nada: si algo se olvida, falla cerrado.
+  backend fija `app.organization_id` (solo para esa transacción) con la organización del
+  usuario. Lo hace un solo lugar (un evento de la sesión de SQLAlchemy que lee la
+  organización del pedido desde una `ContextVar`), así los repositorios no cambian. Sin ese
+  valor, las tablas del negocio no devuelven nada: si algo se olvida, falla cerrado.
 - **Qué tablas:**
   - Por su organización: `organizations` (la propia), `branches`, `users`, `roles` (los del
     sistema, sin organización, se ven siempre), `estimates`, `insurers` y `audit_log`.
@@ -414,14 +414,18 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
     `integration_accounts`.
   - Sin RLS, porque son de todos: la lista de precios, las compatibilidades, los candidatos
     del catálogo, las sesiones guardadas de EPC y SAP (se comparten por huella) y la
-    observabilidad (solo la lee la plataforma, y la API ya filtra Monitoreo).
+    observabilidad, con `llm_calls` y `quote_runs` (la escribe el escritor de métricas, que no
+    es de ningún pedido, y la API ya filtra Monitoreo por organización).
 - **Lo que no es de una sola organización** usa la conexión de sistema, que se saltea RLS:
   el login y la lectura de la sesión de cada pedido (antes de saber quién es), la subida del
-  agente del DMS (antes de saber de qué sucursal es), las tareas de fondo (alertas,
-  precalentar las cuentas, limpieza) y la plataforma en Administración. Esa conexión se usa
-  solo desde esos módulos, y un test lo controla.
+  agente del DMS (antes de saber de qué sucursal es), las alertas, el precalentado de las
+  cuentas, lo que va por huella de una cuenta (cómo le fue y el último uso), la consola y la
+  plataforma. Esa conexión se usa solo desde esos módulos, y un test lo controla. La limpieza
+  de lo vencido y las particiones van con el dueño de las tablas.
 - **Tests:** por cada tabla, una consulta sin filtro con la organización 1 no ve filas de la 2,
   y sin organización no ve ninguna.
+- **El registro de seguridad de una organización** muestra al administrador de plataforma
+  como «Administración de OEMIA»: RLS le oculta los usuarios de plataforma.
 - **Contra qué protege y contra qué no:** protege de los errores del propio código (un filtro
   olvidado, una ruta nueva sin organización). No frena a quien logre ejecutar SQL arbitrario
   con el usuario de la app, porque podría cambiar `app.organization_id`; contra eso están las
@@ -514,10 +518,11 @@ revisarlas de a una.
    2. Código de verificación y sesiones: exigir al entrar el código de la plataforma, que un
       Administrador pueda quitarle el código a quien perdió el celular, y que volver a una PC
       desplazada pida ingresar de nuevo (decisión 21).
-   3. La [seguridad en Postgres](#seguridad-en-postgres): solo local, un usuario para cada
-      cosa, el registro que no se puede borrar y Row Level Security.
-   4. Lo que hace el usuario: Cloudflare y el DNS, `cloudflared`, Postgres solo local, el
-      backend al prender la PC, la PC como servidor y cargar la base.
+   3. La [seguridad en Postgres](#seguridad-en-postgres): un usuario para cada cosa, el
+      registro que no se puede borrar y Row Level Security.
+   4. Lo que hace el usuario: Cloudflare y el DNS, `cloudflared`, Postgres solo local, los
+      usuarios y la base de productivo (`scripts/preparar_postgres.py productivo`), el backend
+      al prender la PC, la PC como servidor y cargar la base.
    5. Pruebas por internet (DBSC, Cotizar sin error 524, el agente del DMS) y prender el túnel.
 
    El aviso de privacidad a los empleados salió de esta etapa (ver [Pendientes](#pendientes)).
@@ -749,6 +754,47 @@ En la rama `feat/publicar` de los tres repositorios.
 - Probado en el navegador: PC desplazada con contraseña mal y bien, quitar el código a un
   usuario, el registro y el ingreso de la plataforma con su código.
 
+**Bloque 3, seguridad en Postgres (hecho):**
+
+- **Tres usuarios de Postgres, tres URLs:** `DATABASE_URL` (la app, con RLS),
+  `SYSTEM_DATABASE_URL` (el sistema, `BYPASSRLS`) y `MIGRATIONS_DATABASE_URL` (el dueño de las
+  tablas: migraciones, particiones y limpieza de lo vencido). Vacías en desarrollo, las dos
+  últimas usan `DATABASE_URL` (con un aviso de que RLS no se aplica); en productivo son
+  obligatorias y con tres usuarios distintos.
+- **`scripts/preparar_postgres.py`**, con el superusuario `postgres` (lo corre el usuario):
+  - `desarrollo`: `cotizador_dev_app` y `cotizador_dev_sistema` para las bases de desarrollo
+    y de los tests, con la contraseña igual al nombre, como `cotizador_dev`, que sigue siendo
+    el dueño (solo sirven en esta PC y las bases no tienen datos de clientes). Corrido el 9
+    de noviembre.
+  - `productivo --env <.env de productivo>`: `cotizador_owner`, `cotizador_app` y
+    `cotizador_sistema` con contraseñas largas al azar y la base `cotizador`, a la que solo
+    se conectan ellos tres. Se corre en el bloque 4, cuando esté la carpeta de productivo.
+  - Las contraseñas viajan ya cifradas (SCRAM) y no se muestran. Se puede volver a correr sin
+    cambiarlas.
+  - Límites de la app y del sistema: 60 segundos por consulta y por transacción abierta sin
+    hacer nada (la carga de la lista de precios de junio de 2026 tarda 0,7 segundos; la
+    consulta más lenta, 0,01) y, en productivo, 30 conexiones cada uno.
+- **Los permisos los da el backend** cada vez que actualiza la base (`app/database/roles.py`):
+  filas de `app` y `observability`, nada de cambiar tablas; en `audit_log`, solo agregar y
+  leer; nada en la tabla de versiones de Alembic.
+- **La organización de cada transacción** (`app/database/tenant.py`): la fija `authenticate`
+  (ahora async, para que valga en todo el pedido): la del usuario, el sistema para la
+  plataforma, ninguna sin sesión. `asyncio.to_thread` y el stream de Cotizar la conservan.
+- **Migración 0007:** la función `app.current_organization_id()` y las políticas de las 23
+  tablas, sin forzar RLS al dueño.
+- **Al arrancar** se revisan los usuarios (`check_database_users`): en productivo no arranca
+  si la app es dueña de tablas, superusuario, puede crear usuarios o bases o se saltea RLS, o
+  si el sistema no se lo saltea.
+- **Tests (809):** corren con los mismos tres usuarios (los de desarrollo). Por cada tabla con
+  RLS, cada organización ve solo lo suyo y sin organización no se ve nada; escribir una fila
+  de otra organización falla; la app y el sistema no pueden editar el registro ni cambiar
+  tablas; toda tabla nueva tiene que quedar clasificada; la lista cerrada del sistema; y la
+  organización en los hilos y en el stream. El código de los tests corre como sistema; los
+  pedidos, como en productivo.
+- Probado en el navegador con la base de prueba: vendedor (presupuestos, usuarios, registro,
+  cuentas, crear y borrar una aseguradora) y plataforma (organizaciones, registro, salud y
+  Monitoreo), sin errores en el log.
+
 ## Decisiones tomadas
 
 1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
@@ -801,6 +847,10 @@ En la rama `feat/publicar` de los tres repositorios.
 26. **Productivo usa el puerto de siempre (8000) y desarrollo uno fijo propio (8001)**, sin
     configurar nada (`SERVER_PORT` vacío): productivo no se toca, los dos pueden correr en la
     misma PC y el front de desarrollo nunca le habla a la base de los clientes.
+27. **La base de productivo es una nueva, `cotizador`**, de `cotizador_owner` y con solo los
+    tres usuarios del backend conectándose; `cotizador_dev` queda para desarrollo. Los
+    usuarios de desarrollo son otros (`cotizador_dev_app` y `cotizador_dev_sistema`): no
+    pueden entrar a la base de productivo aunque estén en el mismo Postgres.
 
 ## Abiertas
 
