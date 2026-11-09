@@ -451,7 +451,7 @@ Por eso el backend agrupa y mide distancias con su propia tabla de sucursales
 - `_watch_session_responses()`: si el heartbeat de la app da 403 o 401, marca la licencia o la
   sesión como perdidas. Se recuperan en la próxima consulta: el backend **no le roba la licencia
   a nadie en segundo plano**.
-- `_fetch()`: ejecuta `fetch()` dentro de la pestaña; hasta 6 pedidos a la vez (`_MAX_PARALLEL_REQUESTS`).
+- `_fetch()`: ejecuta `fetch()` dentro de la pestaña; hasta `EPC_MAX_PARALLEL_REQUESTS` pedidos a la vez (6 por defecto, lo que admite el EPC).
 - `_api_get()`: ante 403 de licencia, 401 o respuesta no JSON, recupera una vez y reintenta.
   Un contador de **generación** evita que varios pedidos que fallan juntos re-logueen varias veces.
 - `search_group()`: consulta **en paralelo todas las familias equivalentes** y gana la primera,
