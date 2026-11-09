@@ -114,10 +114,11 @@ agente del DMS, que usa su propio token.
 
 ## Cupos: sucursales y usuarios
 
-- Cada sucursal activa trae **un usuario incluido** (`USERS_INCLUDED_PER_BRANCH=1`). El cupo de
-  la organización es `sucursales activas × incluidos + extra_users`.
-- El cupo es **común a la organización**, porque un usuario puede trabajar en varias
-  sucursales (a confirmar: [Abiertas](#abiertas), 3).
+- **Los usuarios son de la organización**, no de una sucursal. Cada uno tiene habilitadas una
+  o más sucursales y elige en cuál está trabajando.
+- Se paga por dar de alta una sucursal y por dar de alta usuarios. El cupo de la organización
+  es `sucursales activas × USERS_INCLUDED_PER_BRANCH + extra_users`, con un usuario incluido
+  por sucursal (a confirmar: [Abiertas](#abiertas), 2).
 - Cuentan los usuarios activos. El administrador de plataforma no cuenta.
 - Crear o reactivar un usuario por encima del cupo se rechaza con un mensaje que dice el
   cupo y cómo ampliarlo. Desactivar una sucursal que dejaría más usuarios que cupo también se
@@ -162,7 +163,7 @@ cuenta, y cada usuario carga las suyas en **Mi cuenta**.
   sus cuentas.
 - **Nadie la vuelve a ver:** la pantalla muestra el usuario de la cuenta y si conecta, pero la
   contraseña solo se puede reemplazar. Un admin de la organización puede cargarla por un
-  vendedor, con la misma regla (a confirmar: [Abiertas](#abiertas), 4).
+  vendedor, con la misma regla.
 - **Dos usuarios con la misma cuenta comparten una sola sesión.** Las sesiones se identifican
   por una huella de servicio, usuario **y contraseña** (un HMAC con la clave de cifrado). Si
   bastara el usuario, cualquiera podría escribir la cuenta de otro con una contraseña
@@ -255,10 +256,17 @@ red y la cookie no puede ser `Secure`.
 
 - **Caddy** en esta PC sirve el front compilado y pasa `/api` al backend, que escucha solo en
   `127.0.0.1` (con `--proxy-headers`, para ver la IP real de cada pedido).
-- Con un **dominio propio** (por ejemplo `cotizador.<dominio>`) que apunte a la IP de esta PC
-  en la red, Caddy saca solo un certificado válido por desafío DNS y en las PCs de los
-  vendedores no hay que instalar nada. Sin dominio, Caddy usa su propia autoridad y hay que
-  instalar su certificado una vez en cada PC.
+- **Dominio:** `oemia.com.ar`, con un nombre por instalación (por ejemplo
+  `<cliente>.oemia.com.ar`) que apunta a la IP de esta PC en la red (`192.168.x.x`).
+- **Certificado gratis de Let's Encrypt**, que Caddy saca y renueva solo. Como el sistema no
+  se ve desde internet, Let's Encrypt no puede entrar a comprobar que el dominio es nuestro:
+  lo comprueba por DNS, con un registro temporal que Caddy escribe solo. Para eso el DNS de
+  `oemia.com.ar` pasa a Cloudflare (gratis), cambiando sus servidores de DNS en NIC
+  Argentina, y Caddy usa un token de Cloudflare que solo puede editar ese DNS. Caddy
+  necesita el módulo `caddy-dns/cloudflare`, que se elige al bajarlo de caddyserver.com.
+- En las PCs de los vendedores no hay que instalar nada. Algunos routers bloquean nombres
+  públicos que apuntan a IPs de la red interna (protección contra DNS rebinding); si pasa,
+  se agrega el nombre en el DNS del router o en el archivo `hosts` de cada PC.
 - El firewall de Windows abre el 443 solo para la red local.
 
 ## Etapas
@@ -292,18 +300,18 @@ revisarlas de a una.
 4. En el cotizador se ve el stock de **la sucursal propia, el resto de las sucursales y la
    planta**, y se puede expandir para ver cuánto tiene cada sucursal.
 5. Se entra con **usuario**, no con mail.
-6. Los vendedores entran desde otras PCs: hace falta **HTTPS en la red local**.
-7. Se cobra **por sucursal**, con un usuario incluido por sucursal; los demás se contratan aparte.
+6. Los vendedores entran desde otras PCs: hace falta **HTTPS en la red local**, con el dominio
+   `oemia.com.ar` y un certificado gratis de Let's Encrypt.
+7. Se paga por dar de alta **sucursales** y **usuarios**. Los usuarios son de la organización
+   y eligen en qué sucursal trabajan, entre las que tienen habilitadas.
 8. **Cada usuario carga sus cuentas** de EPC, SAP y el localizador; misma cuenta, misma sesión.
+9. El admin de la organización puede cargar las cuentas de un vendedor, sin poder verlas.
 
 ## Abiertas
 
-1. **Código SAP:** ¿cada sucursal es un punto de venta Nissan con su propio código, o hay uno
-   solo por organización? Recomendado: por sucursal, porque el localizador lo usa para
-   reconocer el stock propio en la red.
-2. **Dominio para HTTPS:** ¿hay o se compra uno? Recomendado: sí, para que los vendedores no
-   tengan que instalar nada.
-3. **Cupo:** ¿común a la organización, o cada usuario incluido queda atado a su sucursal?
-   Recomendado: común.
-4. **Cuentas cargadas por el admin:** ¿el admin de la organización puede cargar las cuentas de
-   un vendedor, sin verlas? Recomendado: sí.
+1. **Código de concesionario de Nissan** (`SAP_DEALER_CODE`, hoy `232111`): va en cada
+   consulta de stock a SAP y el localizador lo usa para marcar como propio el stock del
+   concesionario en la red. ¿Cada sucursal tiene su propio número de cliente de Nissan, o
+   todas usan el mismo? Si es propio de cada una, va en la sucursal; si no, en la organización.
+2. **Usuario incluido por sucursal:** ¿cada sucursal contratada sigue trayendo un usuario
+   incluido, o todos los usuarios se pagan aparte?
