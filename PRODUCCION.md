@@ -1,6 +1,6 @@
 # Productivo
 
-La PC de productivo atiende a todos los usuarios por internet, en `app.oemia.com.ar`. Acá
+La PC de productivo atiende a todos los usuarios por internet, en `app.oemia.ar`. Acá
 está **toda la configuración de productivo**: cada valor, dónde se pone y por qué. Muchos problemas de
 seguridad vienen de una configuración mal puesta, así que la regla es simple: **si se cambia
 algo de productivo, se cambia también acá** (y se anota abajo, en [Cambios](#cambios)).
@@ -61,7 +61,7 @@ tener presente. El resto queda como en `.env.example`.
 | `SERVER_HOST` | `127.0.0.1` | Nadie de la red entra directo. El backend no arranca con otro valor. |
 | `SERVER_PORT` | vacío (por defecto) | Vacío es 8000 en productivo (y 8001 en desarrollo). Tiene que coincidir con el túnel. |
 | `FRONTEND_DIST` | `../Cotizador_FE/dist` (por defecto) | El front compilado. Sin él, el backend no arranca. |
-| `CORS_ORIGINS` | `https://app.oemia.com.ar` | Con el front y la API en la misma dirección no hace falta CORS. Nunca `*` ni `http`. |
+| `CORS_ORIGINS` | `https://app.oemia.ar` | Con el front y la API en la misma dirección no hace falta CORS. Nunca `*` ni `http`. |
 | `CREDENTIALS_KEY` | clave secreta | Cifra las cuentas de EPC, SAP, el localizador y los códigos de verificación. Si se pierde, cada usuario vuelve a cargar sus cuentas. Copia fuera de la PC. |
 | `ANTHROPIC_API_KEY` | clave secreta | La IA. |
 | `DATABASE_URL` | `cotizador_app` en la base `cotizador` | Solo filas, con Row Level Security. La escribe `scripts/preparar_postgres.py`. |
@@ -197,10 +197,30 @@ sistema no se lo saltea, no arranca.
 
 ## Cloudflare
 
-*Pendiente (bloque 5).*
+**Dominios** (plan gratis): `oemia.ar` es el de la app (`app.oemia.ar`) y `oemia.com.ar`
+redirige a `oemia.ar`. Los dos están delegados a Cloudflare desde NIC Argentina (hecho el 9
+de noviembre de 2026).
 
-- DNS de `oemia.com.ar` en Cloudflare (cambiando los servidores en NIC Argentina).
-- Túnel `app.oemia.com.ar` → `http://127.0.0.1:8000`, con `cloudflared` como servicio de Windows.
+**Redirección de `oemia.com.ar`** (pendiente, la hace el usuario), en la zona `oemia.com.ar`:
+
+1. **DNS → Registros:** un registro `A` para `@` y otro para `www`, los dos con la IP
+   `192.0.2.1` y **con proxy** (nube naranja). Esa IP no es de nadie: Cloudflare contesta antes
+   de llegar a ella. Si al pasar el dominio se importaron registros `A`, `AAAA` o `CNAME` para
+   `@` o `www`, se reemplazan; los `MX` y `TXT` (mail) no se tocan.
+2. **Reglas → Crear regla → Regla de redirección** (Redirect Rule), llamada «A oemia.ar»:
+   - Si coincide: **Todas las solicitudes entrantes**.
+   - Entonces: **Dinámico**, con la expresión
+     `concat("https://oemia.ar", http.request.uri.path)`, código **301** y **Conservar la
+     cadena de consulta** marcado.
+3. **SSL/TLS → Certificados perimetrales:** «Usar siempre HTTPS» prendido. El certificado de
+   `oemia.com.ar` y `www.oemia.com.ar` lo pone Cloudflare solo (puede tardar unos minutos).
+4. Probar: `https://oemia.com.ar/prueba?x=1` y `http://www.oemia.com.ar/prueba?x=1` tienen que
+   terminar en `https://oemia.ar/prueba?x=1`. Mientras `oemia.ar` no tenga una web, ahí se ve
+   un error de Cloudflare: es lo esperado.
+
+**Lo que falta del lado de Cloudflare** (bloques 4 y 5):
+
+- Túnel `app.oemia.ar` → `http://127.0.0.1:8000`, con `cloudflared` como servicio de Windows.
   Primero en la PC de desarrollo, para la prueba; después se instala en la PC de productivo y se
   apaga en la otra.
 - Regla del firewall: solo Argentina.
@@ -223,8 +243,8 @@ sistema no se lo saltea, no arranca.
 
 Después de cualquier cambio de configuración:
 
-1. `https://app.oemia.com.ar/docs` muestra la app, no la documentación de la API.
-2. `https://app.oemia.com.ar/api/salud` responde y trae `strict-transport-security`,
+1. `https://app.oemia.ar/docs` muestra la app, no la documentación de la API.
+2. `https://app.oemia.ar/api/salud` responde y trae `strict-transport-security`,
    `x-content-type-options` y `cache-control: no-store`.
 3. Ingresar con una contraseña mal y ver en Administración → Registro de seguridad que la IP es
    la real y no `127.0.0.1`.
@@ -238,6 +258,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-09 | El nombre público pasa a `app.oemia.ar`; `oemia.com.ar` redirige a `oemia.ar`. Los dos dominios, en Cloudflare. |
 | 2026-11-09 | Etapa 6, bloque 3: tres usuarios de Postgres (app con Row Level Security, sistema y dueño), `scripts/preparar_postgres.py` y la base nueva `cotizador`. |
 | 2026-11-09 | Etapa 6, bloque 2: la plataforma entra siempre con el código, `configurar-codigo`, quitar el código desde Administración y «Usar acá» con contraseña. |
 | 2026-11-09 | El puerto sale del entorno: 8000 en productivo, 8001 en desarrollo. |
