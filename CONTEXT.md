@@ -484,14 +484,13 @@ Las tablas sin prefijo están en `app`.
 | `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. |
 | `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
 | `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades (30 días) |
-| `estimates` | Presupuestos formales: número (único), fecha, validez, cliente, datos del concesionario al emitirlo, total con IVA, compañía de seguros, tareas de chapa y pintura y lo acordado al aceptar (franquicia, inspección final, pago del seguro) |
+| `estimates` | Presupuestos formales de una organización, con la sucursal donde se hicieron y quién los hizo y aceptó: número (único en la organización), fecha, validez, cliente, datos del concesionario al emitirlo, total con IVA, compañía de seguros, tareas de chapa y pintura y lo acordado al aceptar (franquicia, inspección final, pago del seguro) |
 | `estimate_lines` | Renglones de cada presupuesto, en orden, con el precio unitario con IVA, la disponibilidad y si quedó excluido al aceptar |
-| `insurers` | Compañías de seguro para elegir en los presupuestos |
+| `insurers` | Compañías de seguro de cada organización para elegir en los presupuestos |
 | `estimate_insurance_orders` | La orden del seguro (PDF) de cada presupuesto aceptado |
-| `dealer_profile` | Una fila: datos y logo del concesionario para los presupuestos nuevos |
 | `estimate_orders` | Excel confirmados, contenido y costo congelados, número de pedido y anulaciones |
 | `estimate_supplies` | Lo pedido o apartado por ítem: origen (pedido o stock), Nº de pedido, costo con IVA, fechas de llegada y separación, anulaciones |
-| `loans` | Registros de préstamos o pedidos de repuestos: pieza, cantidad, concesionario, fechas y estado |
+| `loans` | Registros de préstamos o pedidos de repuestos de cada sucursal: pieza, cantidad, concesionario, fechas y estado |
 | `observability.request_log` | Cada request: ruta, estado, tiempos, etapas, atributos y error |
 | `observability.dependency_events` | Logins y tomas de licencia de EPC, SAP y el localizador |
 | `llm_calls` | Cada llamada a Claude: modelos, tokens, duración, costo y error |
@@ -528,14 +527,13 @@ Dos escrituras están pensadas para muchos usuarios:
 
 ### Lo que cambia con organizaciones, sucursales y usuarios
 
-El plan acordado está en [USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md). El esquema es de un solo concesionario. Antes de sumar esas tablas hay que decidir de quién es cada dato:
-
-| Hoy | Por qué hay que tocarlo |
-|---|---|
-| `uq_estimates_number`, `uq_insurers_name` | Son únicos en toda la base: tienen que pasar a ser por organización o por sucursal. El bloqueo que asigna el número también (una clave por organización) |
-| `dealer_profile`, `workshop_prices`, `price_list`, `compatibility_list` | Son una sola fila (`id = 1`): decidir si son por sucursal, por organización o compartidas |
-| `dms_stock`, `recent_vehicles` | Su clave no dice de quién son: la sucursal o la organización entra en la clave primaria |
-| Tablas de observabilidad | Ya tienen `user_id` (`varchar(64)`, acepta cualquier id); falta sumar la organización para filtrar Monitoreo |
+El plan está en [USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md) («De quién es cada dato»). Desde
+la etapa 2 cada dato dice de quién es: los presupuestos y las aseguradoras, de la organización;
+los préstamos, los precios del taller, los vehículos recientes y los depósitos con su stock, de
+la sucursal; la lista de precios y las compatibilidades de Nissan, compartidas. El perfil del
+concesionario se repartió entre la organización (razón social, CUIT y logo) y la sucursal
+(dirección, teléfono, mail y hora de mano de obra). Las tablas de observabilidad suman
+`organization_id`, para filtrar Monitoreo.
 
 Si el aislamiento entre organizaciones se hace con Row Level Security, el backend tiene que conectarse con un rol que no sea el dueño de las tablas: RLS no se aplica al dueño (salvo con `FORCE ROW LEVEL SECURITY`) ni a un superusuario, y hoy `cotizador_dev` es el dueño.
 
