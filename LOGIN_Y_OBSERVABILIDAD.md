@@ -2,7 +2,8 @@
 
 Guía de alto nivel para cuando se implemente el login: qué ya está preparado, qué hay que
 agregar y qué decidir. El sistema de observabilidad está en
-[OBSERVABILIDAD.md](OBSERVABILIDAD.md).
+[OBSERVABILIDAD.md](OBSERVABILIDAD.md). El plan de usuarios, roles, permisos y organizaciones
+está en [USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md).
 
 ## Lo que ya está preparado
 
@@ -23,9 +24,9 @@ agregar y qué decidir. El sistema de observabilidad está en
    el mismo contexto y queda a nombre del usuario.
 2. **Usar un id estable y opaco** (el id interno del usuario), no el email ni el nombre: los
    logs y las métricas no tienen que tener datos personales de más.
-3. **Acceso a Monitoreo**: reemplazar `require_local_access` (`app/core/access.py`) por una
-   dependencia que exija rol de administrador. Decidir si se mantiene el acceso desde la
-   PC del servidor como respaldo.
+3. **Acceso a Monitoreo**: reemplazar `require_local_access` (`app/core/access.py`) por el
+   permiso `monitoreo.ver`, que tiene solo el administrador de plataforma (decidido el
+   8 de noviembre de 2026; ver USUARIOS_Y_PERMISOS.md).
 4. **Login y fuerza bruta**: el grupo `login` ya limita intentos por IP; sumar un bloqueo
    temporal por usuario tras varios fallos, responder siempre el mismo mensaje («usuario o
    contraseña incorrectos») y loguear los intentos fallidos con el usuario pedido pero
