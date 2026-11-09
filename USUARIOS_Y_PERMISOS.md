@@ -155,9 +155,21 @@ agente del DMS, que usa su propio token.
 - **Cada PC queda recordada**, como en Mercado Libre, y la sesión se protege contra el robo
   de cookies: los virus que las copian del navegador son hoy la forma más común de robar
   cuentas.
-  - **Cookie corta:** la cookie de la sesión (`__Host-`, `HttpOnly`, `Secure`,
-    `SameSite=Lax`) dura 10 minutos y se renueva sola. Nada de tokens en `localStorage`, y la
-    base guarda solo hashes de los tokens.
+  - **Sesiones con estado, no JWT:** la cookie lleva un token al azar de 256 bits que no dice
+    nada por sí mismo, y en cada pedido el backend busca su hash en `sessions`. Así una sesión
+    se corta al instante (salir, otra PC, robo detectado, usuario desactivado) y un cambio de
+    roles vale desde el pedido siguiente. Un JWT no se puede cortar antes de que venza sin
+    consultar la base igual, y con un solo servidor no hay nada que ganar: cuesta una consulta
+    chica por pedido.
+  - **Cookie corta:** la de la sesión dura 10 minutos y se renueva sola. Va con `__Host-` (vale
+    solo para el nombre exacto y ningún subdominio la puede pisar), `HttpOnly`, `Secure`,
+    `SameSite=Strict` y `Path=/`. `Strict` alcanza porque el front y la API están en el mismo
+    nombre.
+  - **Cookie de renovación** (solo sin DBSC): `__Secure-`, `HttpOnly`, `Secure`,
+    `SameSite=Strict` y el `Path` de la ruta de renovación, así no viaja en los demás pedidos.
+  - Al loguearse siempre se crea un token nuevo. Nada de tokens en `localStorage`, y la base
+    guarda solo hashes.
+  - **HSTS:** el navegador no vuelve a intentar entrar por `http`.
   - **Atada a la PC (DBSC)** en Chrome sobre Windows con TPM (desde Chrome 146): al loguearse,
     el navegador crea una clave en el chip de seguridad que no se puede copiar, y cada
     renovación va firmada con ella. Una cookie robada sirve como mucho 10 minutos y no se
