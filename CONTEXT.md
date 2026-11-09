@@ -366,7 +366,7 @@ Cada request tiene un código (`request_id`, header `X-Request-ID`) que viaja po
 - **Límites de uso:** por grupo de rutas, por usuario o por IP (`RATE_LIMIT_*`), y un máximo de cotizaciones simultáneas (`MAX_CONCURRENT_QUOTES`). Responden 429 con `Retry-After` y un mensaje para el usuario.
 - **Salud y recursos:** `/salud` para un monitor externo, `/salud/detalle` para diagnosticar, monitor del atraso del event loop y muestras de RAM y CPU del backend y de Chromium.
 - **Perfiles a pedido:** `scripts/perfil.ps1` usa `profiling.sampling` de Python 3.15 sin reiniciar el backend.
-- **Pantalla Monitoreo** (`/monitoreo` en el front): rendimiento, costos, calidad de la IA, integraciones, embudo de ventas, recursos, navegador y alertas, más el rastreo de un código de error. Hasta que haya login, solo desde la PC del servidor.
+- **Pantalla Monitoreo** (Administración → Monitoreo en el front): rendimiento, costos, calidad de la IA, integraciones, embudo de ventas, recursos, navegador y alertas, más el rastreo de un código de error, de todas las organizaciones o de una. Solo con el permiso `monitoreo.ver`.
 - **Alertas:** reglas revisadas cada 5 minutos que avisan en el log y en Monitoreo. El canal externo queda pendiente.
 - **Telemetría del navegador:** Web Vitals, errores de JavaScript y tiempos de cotización, en lotes a `POST /telemetria`.
 - **Trazas:** OpenTelemetry opcional, apagado por defecto (`uv sync --extra otel`).
