@@ -443,10 +443,11 @@ sirve correr con `PYTHONASYNCIODEBUG=1` (loguea los que tardan más de 100 ms).
 
 ## 11. Pantalla Monitoreo
 
-Ruta `/monitoreo` del front. **Solo la ve quien tiene el permiso `monitoreo.ver`**, que es
-del administrador de plataforma: para los demás el menú no muestra el acceso y la API
-responde 403. Período: hoy, 7 o 30 días (en la hora local). Se refresca sola cada
-minuto.
+Pestaña de Administración en el front (`/administracion/monitoreo`; `/monitoreo` lleva
+ahí). **Solo la ve quien tiene el permiso `monitoreo.ver`**, que es del administrador de
+plataforma: para los demás el menú no muestra el acceso y la API responde 403. Período:
+hoy, 7 o 30 días (en la hora local). Se puede ver una sola organización (`?organizacion=`):
+los recursos del servidor y las alertas son de todas. Se refresca sola cada minuto.
 
 | Sección | Qué muestra | Endpoint |
 |---|---|---|

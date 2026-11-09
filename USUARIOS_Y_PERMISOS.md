@@ -1,9 +1,10 @@
 # Usuarios, permisos y organizaciones — plan
 
 Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
-la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 4 están hechas (ver
+la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 5 están hechas (ver
 [Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
-[la 3](#cómo-quedó-la-etapa-3) y [la 4](#cómo-quedó-la-etapa-4)). Falta la 5, Administración.
+[la 3](#cómo-quedó-la-etapa-3), [la 4](#cómo-quedó-la-etapa-4) y
+[la 5](#cómo-quedó-la-etapa-5)). Falta llevarlas juntas a `main` y la 6, publicar en internet.
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -343,8 +344,8 @@ sesiones de login.
 ## Acceso desde internet
 
 Todos los usuarios, de cualquier sucursal y organización, entran a **esta PC por internet**, en
-un nombre de `oemia.com.ar` (propuesto: `app.oemia.com.ar`, para dejar `oemia.com.ar` libre
-para una web).
+`app.oemia.com.ar` (confirmado el 9 de noviembre de 2026), así `oemia.com.ar` queda libre para
+una web.
 
 - **Cloudflare Tunnel, sin abrir puertos.** El programa `cloudflared` corre como servicio de
   Windows y abre una conexión de salida hacia Cloudflare. Los usuarios entran a Cloudflare, y
@@ -539,6 +540,50 @@ revisarlas de a una.
 - **Para probar en esta PC sin tocar `cotizador_dev`:** `scripts/sembrar_desarrollo.py` arma
   `cotizador_usuarios_dev` con una organización, dos sucursales y el usuario `prueba.vendedor`.
 
+## Cómo quedó la etapa 5
+
+- **Rutas** bajo `/administracion` (`app/routers/admin.py`): `roles`, `organizaciones` (con sus
+  `sucursales`), `sucursales/{id}` (con sus `depositos` y `agentes`), `usuarios` (con `roles`,
+  `sucursales`, `desactivar`, `reactivar`, `contrasena`, `desbloquear`, `cerrar-sesiones` y
+  `cuentas`) y `registro`. Un Administrador (`usuarios.gestionar`) ve y cambia solo lo de su
+  organización: lo de otra da 404, también si la pide por `?organizacion=`. La plataforma ve
+  todas y es la única que toca organizaciones, sucursales, depósitos y agentes.
+- **Las reglas** están en `app/services/admin.py` y se revisan en una transacción con la fila
+  de la organización bloqueada (`AdminRepository.organization_transaction`): dos altas a la
+  vez no se pasan del cupo ni dejan a la organización sin Administrador.
+  - **Cupo:** crear o reactivar un Cotizador, o darle el rol, por encima de
+    `cotizador_seats` da 409 `sin_cupo` con el cupo y cómo ampliarlo. El cupo no se puede
+    bajar por debajo de los que ya cotizan.
+  - **Último Administrador:** no se le saca el rol ni se lo desactiva (409
+    `ultimo_administrador`).
+  - **El propio usuario:** nadie cambia sus roles, ni se desactiva ni se resetea la
+    contraseña desde acá (409 `propio_usuario`); cerrar sus sesiones deja la actual.
+  - Solo se asignan Cotizador, Encargado y Administrador, y los usuarios de la plataforma
+    no aparecen. Un Cotizador necesita al menos una sucursal. Una sucursal desactivada se
+    puede conservar, pero no sumar.
+- **Piden la contraseña de nuevo:** crear usuarios, cambiar roles, desactivar, reactivar,
+  resetear la contraseña, cerrar sesiones, cargar o borrar cuentas y todo lo de la
+  plataforma. No la piden el nombre, las sucursales ni desbloquear.
+- **Desactivar** corta todas las sesiones al instante (`usuario_desactivado`); **resetear** pone
+  una contraseña temporal, que el usuario cambia al entrar, y también las cierra.
+- **Registro de seguridad:** cada acción queda con quién la hizo, a quién y desde dónde. La
+  migración 0005 suma lo de la plataforma: organizaciones y sucursales creadas o modificadas,
+  depósitos y tokens de los agentes del DMS. Un test falla si el código escribe una acción
+  que la base no acepta.
+- **Monitoreo** se filtra por organización (`?organizacion=` en rendimiento, costos, calidad
+  de la IA, integraciones, negocio y navegador); los recursos del servidor y las alertas son
+  de todos.
+- **El front** suma Administración con una pestaña por permiso: Usuarios, Organizaciones,
+  Lista de precios, Registro de seguridad y Monitoreo (`/monitoreo` lleva ahí). El alta
+  propone una contraseña temporal de cuatro palabras fácil de dictar; el token de un agente se
+  muestra una sola vez, con un botón para copiarlo.
+- **La lista de precios de la plataforma** lee `/precios/lista` (antes pedía `/precios/estado`,
+  que exige organización) y cargarla abre el diálogo de la contraseña.
+- **Mi cuenta** muestra las cuentas de EPC, SAP y el localizador solo a quien cotiza.
+- **Para probar en esta PC:** `scripts/sembrar_desarrollo.py` suma `prueba.plataforma`, un
+  administrador de plataforma sin código de verificación que existe solo en la base de
+  desarrollo.
+
 ## Decisiones tomadas
 
 1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
@@ -566,12 +611,12 @@ revisarlas de a una.
     Windows; en los demás navegadores, renovación que detecta reusos y sesiones más cortas.
     Lo sensible pide la contraseña de nuevo.
 17. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
+18. **El nombre público es `app.oemia.com.ar`.**
+19. **El usuario de plataforma entra desde cualquier navegador**, con contraseña y el código de
+    verificación de la app del celular (obligatorio). No se le exige la sesión atada a la PC.
 
 ## Abiertas
 
-1. **El nombre público:** `app.oemia.com.ar` u otro.
-2. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
+1. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
    la contraseña de nuevo.
-3. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
-4. **El usuario de plataforma solo entra con la sesión atada a la PC** (Chrome en Windows), y
-   los demás usuarios pueden usar cualquier navegador (propuesto).
+2. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
