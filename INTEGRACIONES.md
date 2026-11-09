@@ -259,9 +259,10 @@ y **3 s** con SSO silencioso.
 | `X-Uaa-Csrf`, `__Host-JSESSIONID`, `__VCAP_ID__` | XSUAA | 24 h / sesión | Flujo OAuth |
 
 "Sesión" quiere decir que el navegador la borraría al cerrarse, pero el servidor la sigue
-aceptando mientras no venza. El backend las guarda en `SAP_SESSION_FILE`
-(`~/.cotizador/sap_session.json`, formato `storage_state` de Playwright). **Ese archivo da
-acceso a SAP mientras las sesiones estén vivas: no compartirlo ni subirlo al repo.**
+aceptando mientras no venza. El backend las guarda cifradas en la base
+(`integration_sessions`, con CREDENTIALS_KEY), una por cuenta: dos usuarios con la misma
+cuenta comparten la sesión. **Dan acceso a SAP mientras las sesiones estén vivas: por eso
+van cifradas y un respaldo de la base sin el `.env` no las deja usar.**
 
 ### Validar o mantener viva la sesión (medido)
 
@@ -549,18 +550,22 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 
 ### Configuración (`.env`)
 
+Las cuentas de EPC, SAP y Simetrical son de cada usuario: las carga en Mi cuenta y se
+guardan cifradas en la base (`integration_accounts`). Cada servicio tiene una sesión por
+cuenta (`app/core/integrations.py`): dos usuarios con la misma cuenta comparten una sola.
+Sin cuenta cargada, esa parte del cotizador avisa «Cargá tu cuenta de … en Mi cuenta».
+
 El código de concesionario de Nissan (para SAP y el localizador), la ubicación desde la que
 el localizador mide las distancias, los depósitos que no suman o se ignoran y el token del
 agente del DMS son de cada sucursal: se cargan en Administración, no en el `.env`.
 
 | Variable | Default | Uso |
 |---|---|---|
-| `SAP_SESSION_FILE` | `~/.cotizador/sap_session.json` | Cookies de SAP entre reinicios |
 | `SESSION_KEEPALIVE_HOURS` | `3` | Horas sin uso tras las que se liberan EPC y SAP |
 | `WARMUP_ON_START` | `true` | Abrir ambas sesiones al arrancar el backend |
 | `DATABASE_URL` | (obligatoria) | Base Postgres donde se guarda la foto del stock del taller |
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto de una sucursal está desactualizada |
-| `SIMETRICAL_USERNAME` / `SIMETRICAL_PASSWORD` | vacío | Cuenta de Simetrical para el localizador de partes; vacío lo deshabilita (503) |
+| `EPC_MAX_SESSIONS` | `4` | Sesiones del EPC abiertas a la vez (una por cuenta distinta, cada una un navegador); al llegar se cierra la de más tiempo sin uso |
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 

@@ -87,8 +87,7 @@ copy .env.example .env
 **Variables en `.env`:**
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-EPC_USERNAME=tu@email.com
-EPC_PASSWORD=...
+CREDENTIALS_KEY=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false

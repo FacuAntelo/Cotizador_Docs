@@ -1,8 +1,9 @@
 # Usuarios, permisos y organizaciones — plan
 
 Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
-la rama `feat/usuarios` de los tres repositorios: las etapas 1 y 2 están hechas (ver
-[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1) y [la 2](#cómo-quedó-la-etapa-2)).
+la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 3 están hechas (ver
+[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2) y
+[la 3](#cómo-quedó-la-etapa-3)).
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -485,6 +486,30 @@ revisarlas de a una.
   `quote_runs` guardan la organización (y los costos de la IA, la sucursal).
 - **Salieron del `.env`:** `SAP_DEALER_CODE`, `LOCALIZADOR_ORIGEN_LAT`, `LOCALIZADOR_ORIGEN_LON`,
   `DMS_EXCLUDED_DEPOSITS`, `DMS_IGNORED_DEPOSITS` y `DMS_AGENT_TOKEN`.
+
+## Cómo quedó la etapa 3
+
+- **Migración 0004:** `integration_accounts` (una cuenta por usuario y servicio, con la
+  contraseña cifrada atada a su fila, la huella, el estado y el último error) e
+  `integration_sessions` (las cookies de SAP, cifradas, por huella).
+- **Mi cuenta:** `GET /cuentas`, `PUT /cuentas/{servicio}` y `DELETE /cuentas/{servicio}`
+  (`epc`, `sap`, `localizador`). Cargar y borrar piden la contraseña de nuevo y quedan en el
+  registro de seguridad. La contraseña de la cuenta nunca vuelve al front.
+- **Sesiones compartidas:** `app/core/integrations.py` arma un grupo de sesiones por servicio
+  (`SessionPool`), una por huella. El EPC tiene un máximo (`EPC_MAX_SESSIONS`): al llegar se
+  cierra la de más tiempo sin uso, y si todas tienen consultas en curso se avisa que hay que
+  esperar (503 `sesiones_ocupadas`).
+- **El cotizador y el asesor** usan el EPC sin saber de usuarios: cada llamada toma la cuenta
+  del usuario del pedido. Sin cuenta, el EPC responde 409 `sin_cuenta` («Cargá tu cuenta de EPC
+  en Mi cuenta») y el resto sigue andando. La vista previa del pedido sin cuenta de SAP avisa y
+  no elige piezas solas.
+- **Las píldoras** (`/epc/session`, `/sap/session`) muestran la sesión de la cuenta del usuario
+  que mira, sin abrirla; `cuenta: false` en el EPC si no la cargó.
+- **El estado de cada cuenta** (`conectada`, `rechazada`, `error`) se actualiza al usarla y se
+  ve en Mi cuenta. Al arrancar se precalientan las cuentas usadas el último día.
+- **Salieron del `.env`** `EPC_USERNAME`, `EPC_PASSWORD`, `SAP_USERNAME`, `SAP_PASSWORD`,
+  `SAP_SESSION_FILE`, `SIMETRICAL_USERNAME` y `SIMETRICAL_PASSWORD`. En el `.env` de esta PC
+  quedaron comentadas, sin borrar, hasta cargarlas en Mi cuenta. Entró `EPC_MAX_SESSIONS`.
 
 ## Decisiones tomadas
 

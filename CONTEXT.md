@@ -453,14 +453,11 @@ uv run ruff format .
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-EPC_USERNAME=facundo@antelo.com.ar
-EPC_PASSWORD=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false          # true para ver el browser (debug)
 DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
-SIMETRICAL_USERNAME=...    # localizador de partes de la red
-SIMETRICAL_PASSWORD=...
+CREDENTIALS_KEY=...        # cifra las cuentas de EPC, SAP y el localizador de cada usuario
 LLM_DAILY_BUDGET_USD=1     # tope de gasto diario en Claude; 0 = sin tope
 LOG_FILE=logs/cotizador.log  # vacío: solo consola
 ```
