@@ -21,9 +21,9 @@ Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN
 
 ```
 Plataforma (administrador de plataforma)
-└── Organización   razón social, CUIT, logo, usuarios extra contratados, agente del DMS
+└── Organización   razón social, CUIT, logo, usuarios extra contratados
     └── Sucursal   dirección, teléfono, mail, código SAP, ubicación para el localizador,
-                   precios de taller
+                   precios de taller, su servidor con el DMS y el agente que sube el stock
         └── Depósito   nombre en el DMS, si suma al stock por defecto, si se ignora
 Usuario → una organización, un rol, una o más sucursales (una es la de por defecto),
           sus cuentas de EPC, SAP y localizador
@@ -38,14 +38,14 @@ en las tablas actuales como columnas obligatorias desde el principio, sin pasar 
 |---|---|
 | `organizations` | nombre, razón social, CUIT, logo, `extra_users` (usuarios contratados además de los incluidos), activa |
 | `branches` | organización, nombre, dirección, teléfono, mail, código SAP, latitud y longitud, activa |
-| `deposits` | organización, sucursal (vacía mientras nadie lo asigne), código en el DMS, nombre, `counts_by_default`, `ignored` |
+| `deposits` | sucursal, código en el DMS (único dentro de la sucursal: dos sucursales pueden tener su `PICKING`), nombre, `counts_by_default`, `ignored` |
 | `users` | organización (vacía solo para el administrador de plataforma), usuario (único en todo el sistema), nombre a mostrar, hash de la contraseña, `must_change_password`, activo, intentos fallidos, bloqueado hasta, último ingreso, creado por |
 | `roles` | organización (vacía para los roles del sistema), nombre, si es del sistema |
 | `role_permissions` | rol, permiso. Los permisos válidos los define el código (un `CHECK` con la misma lista, como los estados) |
 | `user_branches` | usuario, sucursal, si es la de por defecto |
 | `sessions` | usuario, hash del token, creada, último uso, vence, sucursal activa, IP, navegador, revocada |
 | `integration_accounts` | usuario, servicio (`epc`, `sap`, `localizador`), usuario de la cuenta, contraseña cifrada, huella, estado y último error |
-| `dms_agents` | organización, nombre, hash del token, última subida |
+| `dms_agents` | sucursal, nombre, hash del token, última subida |
 
 Un usuario tiene **un solo rol** (`users.role_id`). Si algún día hace falta combinar roles, se
 pasa a una tabla `user_roles`.
@@ -198,10 +198,14 @@ Al expandirlo se ve cuánto tiene cada sucursal, y en cada una sus depósitos y 
 el DMS la manda. El vendedor sigue pudiendo sumar o sacar depósitos, como hoy; los de por
 defecto salen de `deposits.counts_by_default`.
 
-El agente del DMS es uno por organización y sube todos sus depósitos. Un depósito que aparece
-por primera vez queda **sin asignar**, no suma en ningún lado y Administración avisa que
-falta decir de qué sucursal es. Los marcados como ignorados no se guardan, como hoy
-`DMS_IGNORED_DEPOSITS`.
+Cada sucursal tiene su propio servidor con su DMS, y su agente sube el stock de esa sucursal
+con su propio token. El token dice de qué sucursal es, así que todo lo que sube queda en esa
+sucursal sin que nadie tenga que asignarlo. Un depósito que aparece por primera vez se crea
+solo en esa sucursal y suma por defecto. Desde Administración se puede marcar que no sume
+(como hoy `GARANTIAS` y `PICKING`) o que se ignore y no se guarde (como `MINOZZI`).
+
+El stock desactualizado (`DMS_STALE_MINUTES`) se mide por sucursal: si se apaga el servidor
+de una, solo esa aparece desactualizada, en el cotizador y en Monitoreo.
 
 ## Pantallas
 
@@ -212,9 +216,9 @@ falta decir de qué sucursal es. Los marcados como ignorados no se guardan, como
 - **Mi cuenta:** cambiar la contraseña, cargar las cuentas de EPC, SAP y el localizador y ver
   si conectan, y salir.
 - **Administración**, según los permisos:
-  - Plataforma: organizaciones (con el cupo), sucursales, depósitos (asignarlos a una
-    sucursal, si suman, si se ignoran), agentes del DMS (generar el token, que se muestra una
-    sola vez) y usuarios de todas.
+  - Plataforma: organizaciones (con el cupo), sucursales con sus depósitos (si suman, si se
+    ignoran) y el agente del DMS de cada una (generar el token, que se muestra una sola vez),
+    y usuarios de todas.
   - Organización: sus usuarios (alta con contraseña temporal, rol, sucursales, desactivar,
     resetear la contraseña, cargar sus cuentas).
   - **Monitoreo**, filtrable por organización. Reemplaza el acceso solo desde esta PC
@@ -227,7 +231,7 @@ falta decir de qué sucursal es. Los marcados como ignorados no se guardan, como
 | `SAP_DEALER_CODE` | Cada sucursal (a confirmar: [Abiertas](#abiertas), 1) |
 | `LOCALIZADOR_ORIGEN_LAT`, `LOCALIZADOR_ORIGEN_LON` | Cada sucursal |
 | `DMS_EXCLUDED_DEPOSITS`, `DMS_IGNORED_DEPOSITS` | Cada depósito |
-| `DMS_AGENT_TOKEN` | Un agente por organización, con el token guardado como hash |
+| `DMS_AGENT_TOKEN` | Un agente por sucursal, con el token guardado como hash |
 | `MONITOR_ALLOWED_HOSTS` | El permiso `monitoreo.ver` |
 | Cuentas y sesión de EPC, SAP y Simetrical | Las cuentas de cada usuario |
 
@@ -268,8 +272,7 @@ revisarlas de a una.
    cada ruta y `bind_user`.
 2. **Organizaciones, sucursales y depósitos:** las tablas, la organización y la sucursal en las
    tablas actuales, los repositorios filtrados, el número de presupuesto por organización, el
-   agente del DMS por organización, los depósitos sin asignar, los cupos y lo que sale del
-   `.env`.
+   agente del DMS por sucursal, los cupos y lo que sale del `.env`.
 3. **Cuentas por usuario:** `integration_accounts`, el cifrado y las sesiones compartidas de
    EPC, SAP y el localizador.
 4. **Front:** login, menú por permisos, selector de sucursal, Mi cuenta, stock por sucursal en
