@@ -352,8 +352,14 @@ para una web).
   Argentina).
 - **El certificado es uno para el dominio y lo pone Cloudflare**, gratis y renovado solo. De
   Cloudflare a esta PC el túnel ya va cifrado.
-- **Nada escucha en la red:** Caddy en `127.0.0.1` sirve el front compilado y pasa `/api` al
-  backend, que también escucha en `127.0.0.1`. `cloudflared` le manda todo a Caddy.
+- **El backend entrega también el front**, sin Caddy: la carpeta `dist` que arma
+  `npm run build` y la API bajo `/api` (por ejemplo `/api/presupuestos`), así no choca con
+  las direcciones de las pantallas. El backend escucha solo en `127.0.0.1` y `cloudflared` le
+  manda todo. En productivo quedan prendidos tres servicios: Postgres, el backend y
+  `cloudflared`. Cloudflare guarda copias de los archivos del front y los comprime.
+- **En desarrollo, también una sola dirección:** el servidor de Vite pasa `/api` al backend,
+  así la cookie viaja igual que en productivo.
+- **Publicar una versión nueva:** `npm run build` y reiniciar el backend.
 - **La IP real de cada pedido:** con el túnel todos llegan desde `127.0.0.1`, y la IP de quien
   llama viene en el header `CF-Connecting-IP`. Hay que usarla en los límites de uso, el bloqueo
   del login, los logs y Monitoreo; hoy se toma `request.client.host` (`app/core/access.py`,
@@ -400,15 +406,16 @@ revisarlas de a una.
    DMS por sucursal, el cupo y lo que sale del `.env`.
 3. **Cuentas por usuario:** `integration_accounts`, el cifrado y las sesiones compartidas de
    EPC, SAP y el localizador.
-4. **Front:** login, menú por permisos, selector de sucursal, Mi cuenta con Mis dispositivos,
-   «Usar acá», presupuestos de toda la organización, stock por sucursal en el cotizador, costos
-   y lista de precios según permiso, y Monitoreo dentro de Administración.
+4. **Front:** la API bajo `/api` con el proxy de Vite, login, menú por permisos, selector de
+   sucursal, Mi cuenta con Mis dispositivos, «Usar acá», presupuestos de toda la organización,
+   stock por sucursal en el cotizador, costos y lista de precios según permiso, y Monitoreo
+   dentro de Administración.
 5. **Administración:** organizaciones, sucursales, depósitos, agentes del DMS, usuarios con sus
    roles y el cupo, la carga de la lista de precios y las compatibilidades, y el registro de
    seguridad.
-6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared` y Caddy,
-   la IP real desde `CF-Connecting-IP`, apagar `/docs`, la regla de solo Argentina, la alerta de
-   muchos logins fallidos, la auditoría (`created_by`, `accepted_by`), Row Level Security antes
+6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared`, el
+   backend entregando el front, la IP real desde `CF-Connecting-IP`, apagar `/docs`, la regla
+   de solo Argentina, la alerta de muchos logins fallidos, la auditoría (`created_by`, `accepted_by`), Row Level Security antes
    del segundo cliente y el aviso de privacidad a los empleados (Ley 25.326). El túnel se prende
    al final de esta etapa.
 
