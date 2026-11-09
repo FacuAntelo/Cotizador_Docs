@@ -443,9 +443,9 @@ sirve correr con `PYTHONASYNCIODEBUG=1` (loguea los que tardan más de 100 ms).
 
 ## 11. Pantalla Monitoreo
 
-Ruta `/monitoreo` del front. **Hasta que exista el login, solo se ve desde la PC donde
-corre el backend** (`MONITOR_ALLOWED_HOSTS`): desde otra PC el menú no muestra el acceso y
-la API responde 403. Período: hoy, 7 o 30 días (en la hora local). Se refresca sola cada
+Ruta `/monitoreo` del front. **Solo la ve quien tiene el permiso `monitoreo.ver`**, que es
+del administrador de plataforma: para los demás el menú no muestra el acceso y la API
+responde 403. Período: hoy, 7 o 30 días (en la hora local). Se refresca sola cada
 minuto.
 
 | Sección | Qué muestra | Endpoint |
@@ -715,7 +715,7 @@ Todas en el `.env` del backend (con su explicación en `.env.example` y en el do
 | Requests | `OBS_SLOW_REQUEST_SECONDS`, `OBS_EXCLUDED_PATHS`, `OBS_QUIET_PATHS`, `OBS_WRITER_BATCH_SIZE`, `OBS_WRITER_FLUSH_SECONDS`, `OBS_WRITER_MAX_QUEUE`, `OBS_TIMEZONE`, `CORS_ORIGINS` |
 | Costos de la IA | `ANTHROPIC_CACHE_TTL`, `LLM_DAILY_BUDGET_USD`, `LLM_BUDGET_WARN_RATIO`, `LLM_BUDGET_ACTION`, `LLM_PRICES_FILE` |
 | Límites de uso | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_IA`, `RATE_LIMIT_INTEGRACIONES`, `RATE_LIMIT_ESCRITURAS`, `RATE_LIMIT_TELEMETRIA`, `RATE_LIMIT_LOGIN`, `MAX_CONCURRENT_QUOTES`, `MAX_CONCURRENT_QUOTES_RETRY_SECONDS` |
-| Recursos | `LOOP_LAG_CHECK_SECONDS`, `LOOP_LAG_WARN_MS`, `RUNTIME_SAMPLE_SECONDS`, `MONITOR_ALLOWED_HOSTS` |
+| Recursos | `LOOP_LAG_CHECK_SECONDS`, `LOOP_LAG_WARN_MS`, `RUNTIME_SAMPLE_SECONDS` |
 | Alertas | `ALERTS_ENABLED`, `ALERTS_CHECK_SECONDS`, `ALERTS_REPEAT_MINUTES`, `ALERT_ERROR_RATE_PCT`, `ALERT_ERROR_RATE_WINDOW_MINUTES`, `ALERT_MIN_REQUESTS`, `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES`, `ALERT_LOGIN_FAILURES`, `ALERT_LOOP_LAG_MS`, `ALERT_DMS_BUSINESS_HOURS`, `ALERT_DMS_BUSINESS_DAYS` |
 | Telemetría del front | `TELEMETRY_MAX_EVENTS`, `TELEMETRY_MAX_BYTES` (y `VITE_TELEMETRY` en el front) |
 | Trazas | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_ENVIRONMENT`, `OTEL_TRACES_SAMPLE_RATIO`, `OTEL_EXCLUDED_URLS` |
@@ -727,7 +727,7 @@ Todas en el `.env` del backend (con su explicación en `.env.example` y en el do
 
 | Síntoma | Qué mirar |
 |---|---|
-| Monitoreo no aparece en el menú o responde 403 | Se está entrando desde otra PC. Hasta que haya login, solo desde la del servidor (o sumar la IP a `MONITOR_ALLOWED_HOSTS`) |
+| Monitoreo no aparece en el menú o responde 403 | El usuario no tiene el permiso `monitoreo.ver`: es solo del administrador de plataforma |
 | Monitoreo no muestra lo último | Los registros se escriben cada 2 s; si sigue sin aparecer, `/salud/detalle` → `registros` (pendientes, descartados, lotes fallidos) y el log (`Observabilidad: no se pudieron guardar…`) |
 | Los vendedores ven «Hiciste muchas consultas…» | Monitoreo → Rendimiento → columna Límite, y el log (`Límite de uso: grupo=…`). Subir `RATE_LIMIT_<GRUPO>` si el uso es legítimo |
 | El asesor dejó de sugerir | Monitoreo → Costos IA: ¿se llegó al tope? Ajustar `LLM_DAILY_BUDGET_USD` o esperar a mañana |
