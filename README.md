@@ -122,6 +122,13 @@ la contraseña ahí mismo y configura el código de verificación con el celular
 uv run python -m app.cli crear-admin
 ```
 
+Si un administrador de plataforma cambia o pierde el celular, se le configura un código nuevo
+desde la misma consola (le cierra todas las sesiones):
+
+```bash
+uv run python -m app.cli configurar-codigo
+```
+
 ```bash
 # Levantar servidor (al arrancar crea o actualiza las tablas). La API queda bajo /api.
 uv run --extra otel python -m app.server

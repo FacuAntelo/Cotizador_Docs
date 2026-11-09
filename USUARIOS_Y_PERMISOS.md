@@ -156,8 +156,11 @@ agente del DMS, que usa su propio token.
 - **Contraseñas con Argon2id.** Mínimo 12 caracteres, sin reglas de composición. Se rechazan
   las muy comunes y las que contienen el usuario.
 - **Código de verificación** de 6 dígitos de una app (Google Authenticator o similar), que se
-  pide al loguearse: obligatorio para el administrador de plataforma, opcional para los
-  Administradores.
+  pide al loguearse: obligatorio para el administrador de plataforma (sin código configurado
+  no entra), opcional para los demás. Si alguien pierde el celular, un Administrador de su
+  organización le quita el código desde Administración (y se le cierran las sesiones); al de
+  plataforma se le configura otro desde la consola de la PC del servidor
+  (`python -m app.cli configurar-codigo`).
 - **Cada PC queda recordada**, como en Mercado Libre, y la sesión se protege contra el robo
   de cookies: los virus que las copian del navegador son hoy la forma más común de robar
   cuentas.
@@ -222,7 +225,8 @@ agente del DMS, que usa su propio token.
   entrar. No hay mails: si alguien la olvida, un admin se la resetea.
 - **El administrador de plataforma se crea con un comando** en la PC del servidor
   (`uv run python -m app.cli crear-admin`), que pide la contraseña ahí mismo y configura el
-  código de verificación. Desde la web no se pueden crear administradores de plataforma.
+  código de verificación. Desde la web no se pueden crear administradores de plataforma, ni
+  quitarles el código: si cambia de celular, `uv run python -m app.cli configurar-codigo`.
 - **Registro de seguridad** (`audit_log`): los logins buenos y fallidos, los bloqueos, los
   cambios y reseteos de contraseña, las altas, bajas y cambios de rol, las sesiones cerradas y
   quién cargó cada cuenta de EPC, SAP o el localizador. Lo ve el administrador de plataforma
@@ -677,8 +681,8 @@ revisarlas de a una.
   que exige organización) y cargarla abre el diálogo de la contraseña.
 - **Mi cuenta** muestra las cuentas de EPC, SAP y el localizador solo a quien cotiza.
 - **Para probar en esta PC:** `scripts/sembrar_desarrollo.py` suma `prueba.plataforma`, un
-  administrador de plataforma sin código de verificación que existe solo en la base de
-  desarrollo.
+  administrador de plataforma que existe solo en la base de desarrollo (desde la etapa 6 entra
+  con un código de prueba fijo, `DEV_TOTP_SECRET`).
 
 ## Cómo va la etapa 6
 
@@ -717,6 +721,33 @@ En la rama `feat/publicar` de los tres repositorios.
 - **[PRODUCCION.md](PRODUCCION.md):** toda la configuración de productivo, con su porqué.
 - Los tests corren como desarrollo y sin el front compilado aunque el `.env` sea de
   productivo (`tests/conftest.py`).
+- **Puertos:** `SERVER_PORT` vacío es 8000 en productivo y 8001 en desarrollo
+  (`Settings.port`); el proxy de Vite va al 8001 (decisión 26).
+
+**Bloque 2, código de verificación y sesiones (hecho):**
+
+- **La plataforma entra siempre con el código.** Sin código configurado, el login responde
+  403 `falta_configurar_codigo` (con la contraseña correcta: no suma para el bloqueo, pero
+  queda en el registro como ingreso fallido con motivo `sin_codigo`).
+- **`python -m app.cli configurar-codigo`:** código nuevo para un administrador de plataforma
+  que cambió o perdió el celular; le cierra todas las sesiones y queda en el registro
+  (`totp_activado` con origen `configurar-codigo`). Solo para usuarios de plataforma.
+- **Quitar el código desde Administración** (`POST /administracion/usuarios/{id}/quitar-codigo`,
+  con la contraseña recién escrita): para quien perdió el celular. Le cierra todas las
+  sesiones y queda en el registro como `codigo_quitado` (migración 0006). No sirve para el
+  propio usuario (409 `propio_usuario`), para quien no tiene código (409 `sin_codigo`) ni para la
+  plataforma (404, no pertenece a ninguna organización). En el diálogo del usuario, con
+  confirmación.
+- **«Usar acá» pide la contraseña** (y el código si lo tiene), igual que el login (decisión
+  21): una contraseña mal cuenta para el bloqueo y queda en el registro con motivo
+  `usar_aca`, y la ruta entra en el límite de intentos del login. La PC desplazada ya no
+  retoma sola cuando la otra sale (se sacó `take_free_slot`), y después de «No fui yo» también
+  hay que escribir la contraseña.
+- **El registro de seguridad** dice el motivo de cada ingreso fallido.
+- `scripts/sembrar_desarrollo.py` le pone a `prueba.plataforma` el código de la clave fija
+  `DEV_TOTP_SECRET`.
+- Probado en el navegador: PC desplazada con contraseña mal y bien, quitar el código a un
+  usuario, el registro y el ingreso de la plataforma con su código.
 
 ## Decisiones tomadas
 
