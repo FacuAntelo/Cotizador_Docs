@@ -1,9 +1,9 @@
 # Usuarios, permisos y organizaciones — plan
 
 Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
-la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 3 están hechas (ver
-[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2) y
-[la 3](#cómo-quedó-la-etapa-3)).
+la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 4 están hechas (ver
+[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
+[la 3](#cómo-quedó-la-etapa-3) y [la 4](#cómo-quedó-la-etapa-4)). Falta la 5, Administración.
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -510,6 +510,34 @@ revisarlas de a una.
 - **Salieron del `.env`** `EPC_USERNAME`, `EPC_PASSWORD`, `SAP_USERNAME`, `SAP_PASSWORD`,
   `SAP_SESSION_FILE`, `SIMETRICAL_USERNAME` y `SIMETRICAL_PASSWORD`. En el `.env` de esta PC
   quedaron comentadas, sin borrar, hasta cargarlas en Mi cuenta. Entró `EPC_MAX_SESSIONS`.
+
+## Cómo quedó la etapa 4
+
+- **La API va bajo `/api`** (`app/core/paths.py`). Los límites de uso, los registros y la
+  configuración siguen nombrando las rutas sin el prefijo. En desarrollo el servidor de Vite
+  pasa `/api` a `127.0.0.1:8000` (`vite.config.ts`, y `VITE_API_URL=/api` en
+  `.env.development`): el front y la API quedan en el mismo nombre, como en productivo.
+- **`npm run gen:api`** (`scripts/gen-api.mjs`) genera los tipos sin el prefijo, y el documento
+  de `/telemetria` ya no rompe la generación.
+- **El front arranca por `AuthGate`:** sin sesión, el ingreso (con el código de verificación si
+  el usuario lo tiene); si otra PC tomó el usuario, «Tu usuario se abrió en otra PC» con «Usar
+  acá», «No fui yo: cerrar esa sesión» y Salir; con la contraseña temporal, el cambio
+  obligatorio. `/auth/me` se vuelve a leer cada 30 segundos.
+- **El cliente** manda `X-OEMIA: 1`, renueva la cookie corta una sola vez cuando vence (aunque
+  fallen varios pedidos a la vez) y repite el pedido.
+- **El menú** muestra lo que permiten los roles, y cada pantalla pide su permiso. Arriba van el
+  selector de sucursal (`PUT /auth/sucursal`), Mi cuenta y el aviso «Nuevo ingreso desde…
+  ¿fuiste vos?».
+- **Mi cuenta:** cambio de contraseña, código de verificación (la clave para escribirla en la app
+  y el enlace `otpauth://`), Mis dispositivos con «Protegida» o «Sin protección» y las cuentas
+  de EPC, SAP y el localizador. Lo sensible abre el diálogo para confirmar la contraseña.
+- **Presupuestos:** la sucursal de cada uno y el filtro por sucursal, para quien trabaja en
+  varias. **Cotizador:** el stock del taller suma «otras N» y el detalle de cada sucursal.
+  **Lista de precios:** cargar la lista y las compatibilidades es de la plataforma; el margen y
+  el criterio se editan con `precios.gestionar`. Las píldoras de EPC y SAP dicen «sin cuenta»
+  si falta cargarla.
+- **Para probar en esta PC sin tocar `cotizador_dev`:** `scripts/sembrar_desarrollo.py` arma
+  `cotizador_usuarios_dev` con una organización, dos sucursales y el usuario `prueba.vendedor`.
 
 ## Decisiones tomadas
 

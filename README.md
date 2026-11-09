@@ -122,9 +122,9 @@ uv run python -m app.cli crear-admin
 ```
 
 ```bash
-# Levantar servidor (al arrancar crea o actualiza las tablas)
+# Levantar servidor (al arrancar crea o actualiza las tablas). La API queda bajo /api.
 uv run uvicorn main:app --reload
-# → http://localhost:8000
+# → http://localhost:8000/api/salud
 ```
 
 ### 2. Frontend
