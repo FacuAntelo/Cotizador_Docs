@@ -1,10 +1,10 @@
 # Usuarios, permisos y organizaciones — plan
 
-Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
-la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 5 están hechas (ver
-[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
+Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Las etapas 1 a 5
+se construyeron en la rama `feat/usuarios` de los tres repositorios y se mergearon a `main` el 9
+de noviembre (ver [Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
 [la 3](#cómo-quedó-la-etapa-3), [la 4](#cómo-quedó-la-etapa-4) y
-[la 5](#cómo-quedó-la-etapa-5)). Falta llevarlas juntas a `main` y la 6, publicar en internet.
+[la 5](#cómo-quedó-la-etapa-5)). Falta la 6: publicar en internet y reforzar Postgres.
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -336,10 +336,88 @@ sesiones de login.
 - Cada repositorio recibe la organización (y la sucursal cuando corresponde) del usuario y
   filtra por ella. Pedir algo de otra organización da 404, no 403, para no confirmar que
   existe. Hay tests de eso por cada recurso.
-- Antes de sumar una segunda organización se activa Row Level Security como segunda barrera.
-  Necesita que el backend se conecte con un usuario de Postgres que no sea el dueño de las
-  tablas, que es lo previsto para productivo: las migraciones corren con el dueño y la app con
-  un usuario con permisos mínimos.
+- Postgres repite el filtro como segunda barrera con Row Level Security, en la etapa 6 (ver
+  [Seguridad en Postgres](#seguridad-en-postgres)).
+
+## Seguridad en Postgres
+
+Lo que se revisó el 9 de noviembre, sin cambiar nada:
+
+- **Escucha en todas las direcciones de red** (`listen_addresses = '*'`, el puerto 5432 en
+  `0.0.0.0` y `::`). Lo que hoy frena las conexiones desde la red es solo el firewall de Windows,
+  que no tiene ninguna regla que abra el puerto. `pg_hba.conf` no se pudo leer sin el usuario
+  `postgres`.
+- **La app se conecta con `cotizador_dev`**, que es el dueño de todas las tablas, puede crear
+  bases y tiene la contraseña igual al nombre. Con él se puede borrar cualquier tabla o el
+  registro de seguridad.
+- Sin límite de tiempo por consulta y sin Row Level Security. Las contraseñas de Postgres van con
+  `scram-sha-256`, y sin SSL alcanza porque la app y la base están en la misma PC.
+
+Lo que se hace en la etapa 6, antes de publicar:
+
+1. **Solo conexiones desde esta PC:** `listen_addresses = 'localhost'` y `pg_hba.conf` solo con
+   `127.0.0.1/32` y `::1/128` con `scram-sha-256`. Así no depende de que el firewall siga bien.
+   Lo cambia el usuario, porque pide permisos de administrador y reiniciar el servicio.
+2. **Un usuario de Postgres para cada cosa:**
+   - **Dueño** (`cotizador_owner`): dueño de las tablas. Corre las migraciones, crea las
+     particiones mensuales de la observabilidad y hace la limpieza por antigüedad. La app lo
+     usa solo para eso, con su propia URL (`MIGRATIONS_DATABASE_URL`), no para atender pedidos.
+   - **App** (`cotizador_app`): solo lee, agrega, cambia y borra filas de `app` y
+     `observability`; no crea ni borra tablas, no crea bases y no es superusuario. Contraseña
+     larga al azar en el `.env`.
+   - **Sistema** (`cotizador_sistema`, con `BYPASSRLS`): para lo que no es de una sola
+     organización (ver abajo). Los mismos permisos que la app.
+   - **El registro de seguridad no se puede tocar desde la app:** en `audit_log` la app y el
+     sistema solo agregan y leen filas. Ni una sesión robada ni un error del código lo borran.
+   - **Límites para la app:** `statement_timeout`, `idle_in_transaction_session_timeout` y un
+     máximo de conexiones.
+3. **Row Level Security (RLS):** ver abajo.
+4. **Disco y respaldos:** Postgres no cifra los datos en el disco. Windows 11 Home no trae
+   BitLocker; si esta PC tiene «Cifrado del dispositivo», se prende. Respaldo diario con
+   `pg_dump`, cifrado y guardado fuera de esta PC. Lo más sensible ya no depende del disco: las
+   contraseñas de los usuarios y los tokens van con hash, y las cuentas de EPC, SAP y el
+   localizador y el código de verificación, cifrados con `CREDENTIALS_KEY`, que está en el
+   `.env` y no en la base.
+5. **Detalles:** registrar en el log de Postgres los intentos de conexión (`log_connections`),
+   una contraseña fuerte para `postgres` guardada fuera de la PC, y Postgres al día.
+
+### Row Level Security
+
+Es de la base, no de la API. La API ya filtra (primera barrera): cada repositorio recibe la
+organización del usuario y lo de otra da 404. Con RLS, Postgres repite el filtro por su cuenta
+en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
+`SELECT * FROM estimates WHERE id = 57` y el 57 es de otra organización, Postgres agrega solo
+`AND organization_id = <la del pedido>` y no devuelve nada.
+
+- **Cómo sabe Postgres de qué organización es el pedido:** al empezar cada transacción, el
+  backend fija `SET LOCAL app.organization_id = '<id>'` con la organización del usuario. Lo
+  hace un solo lugar (un evento de la sesión de SQLAlchemy que lee la organización del pedido
+  desde una `ContextVar`), así los repositorios no cambian. Sin ese valor, las tablas del
+  negocio no devuelven nada: si algo se olvida, falla cerrado.
+- **Qué tablas:**
+  - Por su organización: `organizations` (la propia), `branches`, `users`, `roles` (los del
+    sistema, sin organización, se ven siempre), `estimates`, `insurers` y `audit_log`.
+  - Por su sucursal: `deposits`, `dms_agents`, `dms_stock_uploads`, `loans`,
+    `recent_vehicles` y `workshop_prices`.
+  - Por su presupuesto, su depósito o su usuario: las líneas, pedidos, insumos y órdenes de
+    los presupuestos, `dms_stock`, `sessions`, `user_roles`, `user_branches` e
+    `integration_accounts`.
+  - Sin RLS, porque son de todos: la lista de precios, las compatibilidades, los candidatos
+    del catálogo, las sesiones guardadas de EPC y SAP (se comparten por huella) y la
+    observabilidad (solo la lee la plataforma, y la API ya filtra Monitoreo).
+- **Lo que no es de una sola organización** usa la conexión de sistema, que se saltea RLS:
+  el login y la lectura de la sesión de cada pedido (antes de saber quién es), la subida del
+  agente del DMS (antes de saber de qué sucursal es), las tareas de fondo (alertas,
+  precalentar las cuentas, limpieza) y la plataforma en Administración. Esa conexión se usa
+  solo desde esos módulos, y un test lo controla.
+- **Tests:** por cada tabla, una consulta sin filtro con la organización 1 no ve filas de la 2,
+  y sin organización no ve ninguna.
+- **Contra qué protege y contra qué no:** protege de los errores del propio código (un filtro
+  olvidado, una ruta nueva sin organización). No frena a quien logre ejecutar SQL arbitrario
+  con el usuario de la app, porque podría cambiar `app.organization_id`; contra eso están las
+  consultas con parámetros (SQLAlchemy), el usuario con permisos mínimos y Postgres solo local.
+- **Costo:** chico. Las columnas `organization_id` y `branch_id` ya tienen índice, y las
+  políticas por sucursal o por presupuesto hacen una subconsulta sobre tablas chicas.
 
 ## Acceso desde internet
 
@@ -418,9 +496,11 @@ revisarlas de a una.
    seguridad.
 6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared`, el
    backend entregando el front, la IP real desde `CF-Connecting-IP`, apagar `/docs`, la regla
-   de solo Argentina, la alerta de muchos logins fallidos, la auditoría (`created_by`, `accepted_by`), Row Level Security antes
-   del segundo cliente y el aviso de privacidad a los empleados (Ley 25.326). El túnel se prende
-   al final de esta etapa.
+   de solo Argentina, la alerta de muchos logins fallidos, exigir al entrar el código de
+   verificación de la plataforma, que un Administrador pueda quitarle el código a quien perdió
+   el celular, la [seguridad en Postgres](#seguridad-en-postgres) (solo local, un usuario para
+   cada cosa, el registro que no se puede borrar y Row Level Security) y el aviso de privacidad
+   a los empleados (Ley 25.326). El túnel se prende al final de esta etapa.
 
 ## Cómo quedó la etapa 1
 
@@ -614,6 +694,9 @@ revisarlas de a una.
 18. **El nombre público es `app.oemia.com.ar`.**
 19. **El usuario de plataforma entra desde cualquier navegador**, con contraseña y el código de
     verificación de la app del celular (obligatorio). No se le exige la sesión atada a la PC.
+20. **Postgres se refuerza antes de publicar, con Row Level Security incluido** (no se espera al
+    segundo cliente): solo conexiones locales, un usuario de Postgres para cada cosa y el
+    registro de seguridad que la app no puede borrar.
 
 ## Abiertas
 
