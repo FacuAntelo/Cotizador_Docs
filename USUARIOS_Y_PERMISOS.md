@@ -1,7 +1,7 @@
 # Usuarios, permisos y organizaciones — plan
 
 Estado: plan acordado con el usuario el 8 de noviembre de 2026. Todavía no hay nada construido.
-Lo que queda por confirmar está en [Abiertas](#abiertas).
+Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
 
@@ -22,7 +22,8 @@ Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN
 ```
 Plataforma (administrador de plataforma)
 └── Organización   razón social, CUIT, logo, usuarios extra contratados
-    └── Sucursal   dirección, teléfono, mail, código SAP, ubicación para el localizador,
+    └── Sucursal   dirección, teléfono, mail, código de concesionario de Nissan,
+                   ubicación para el localizador,
                    precios de taller, su servidor con el DMS y el agente que sube el stock
         └── Depósito   nombre en el DMS, si suma al stock por defecto, si se ignora
 Usuario → una organización, un rol, una o más sucursales (una es la de por defecto),
@@ -37,7 +38,7 @@ en las tablas actuales como columnas obligatorias desde el principio, sin pasar 
 | Tabla | Columnas principales |
 |---|---|
 | `organizations` | nombre, razón social, CUIT, logo, `extra_users` (usuarios contratados además de los incluidos), activa |
-| `branches` | organización, nombre, dirección, teléfono, mail, código SAP, latitud y longitud, activa |
+| `branches` | organización, nombre, dirección, teléfono, mail, `dealer_code` (código de concesionario de Nissan, puede repetirse entre sucursales), latitud y longitud, activa |
 | `deposits` | sucursal, código en el DMS (único dentro de la sucursal: dos sucursales pueden tener su `PICKING`), nombre, `counts_by_default`, `ignored` |
 | `users` | organización (vacía solo para el administrador de plataforma), usuario (único en todo el sistema), nombre a mostrar, hash de la contraseña, `must_change_password`, activo, intentos fallidos, bloqueado hasta, último ingreso, creado por |
 | `roles` | organización (vacía para los roles del sistema), nombre, si es del sistema |
@@ -118,7 +119,7 @@ agente del DMS, que usa su propio token.
   o más sucursales y elige en cuál está trabajando.
 - Se paga por dar de alta una sucursal y por dar de alta usuarios. El cupo de la organización
   es `sucursales activas × USERS_INCLUDED_PER_BRANCH + extra_users`, con un usuario incluido
-  por sucursal (a confirmar: [Abiertas](#abiertas), 2).
+  por sucursal.
 - Cuentan los usuarios activos. El administrador de plataforma no cuenta.
 - Crear o reactivar un usuario por encima del cupo se rechaza con un mensaje que dice el
   cupo y cómo ampliarlo. Desactivar una sucursal que dejaría más usuarios que cupo también se
@@ -195,6 +196,15 @@ Cada renglón muestra, sin salir del cotizador:
 - **Otras sucursales:** la suma de las demás sucursales de la organización.
 - **Planta:** el stock de SAP, como hoy, con la lupa del localizador para la red.
 
+**El código de concesionario es de cada sucursal.** Nissan le da uno a cada sucursal: en general los
+primeros cuatro dígitos son del concesionario y los dos últimos de la sucursal (Sendai Lanús es
+`231111`, Quilmes `231132`, Lobos `231141`; Antelo, `232111`). A veces varias sucursales comparten
+uno (las tres de Femotors usan `230912`). Lo revisamos el 9 de noviembre en el localizador:
+cada sucursal de la red viene con su código (`ClientIDAlpha`). Por eso:
+
+- La consulta a SAP manda el código de la sucursal activa.
+- El localizador marca como propias las sucursales con un código de la organización.
+
 Al expandirlo se ve cuánto tiene cada sucursal, y en cada una sus depósitos y la ubicación si
 el DMS la manda. El vendedor sigue pudiendo sumar o sacar depósitos, como hoy; los de por
 defecto salen de `deposits.counts_by_default`.
@@ -229,7 +239,7 @@ de una, solo esa aparece desactualizada, en el cotizador y en Monitoreo.
 
 | Variable | Pasa a |
 |---|---|
-| `SAP_DEALER_CODE` | Cada sucursal (a confirmar: [Abiertas](#abiertas), 1) |
+| `SAP_DEALER_CODE` | Cada sucursal (`branches.dealer_code`) |
 | `LOCALIZADOR_ORIGEN_LAT`, `LOCALIZADOR_ORIGEN_LON` | Cada sucursal |
 | `DMS_EXCLUDED_DEPOSITS`, `DMS_IGNORED_DEPOSITS` | Cada depósito |
 | `DMS_AGENT_TOKEN` | Un agente por sucursal, con el token guardado como hash |
@@ -256,18 +266,29 @@ red y la cookie no puede ser `Secure`.
 
 - **Caddy** en esta PC sirve el front compilado y pasa `/api` al backend, que escucha solo en
   `127.0.0.1` (con `--proxy-headers`, para ver la IP real de cada pedido).
-- **Dominio:** `oemia.com.ar`, con un nombre por instalación (por ejemplo
-  `<cliente>.oemia.com.ar`) que apunta a la IP de esta PC en la red (`192.168.x.x`).
-- **Certificado gratis de Let's Encrypt**, que Caddy saca y renueva solo. Como el sistema no
-  se ve desde internet, Let's Encrypt no puede entrar a comprobar que el dominio es nuestro:
-  lo comprueba por DNS, con un registro temporal que Caddy escribe solo. Para eso el DNS de
-  `oemia.com.ar` pasa a Cloudflare (gratis), cambiando sus servidores de DNS en NIC
-  Argentina, y Caddy usa un token de Cloudflare que solo puede editar ese DNS. Caddy
-  necesita el módulo `caddy-dns/cloudflare`, que se elige al bajarlo de caddyserver.com.
+- **Un nombre por instalación**, por ejemplo `antelo.oemia.com.ar`, que apunta a la IP del
+  servidor en la red del cliente (`192.168.x.x`). Es uno por instalación porque el navegador
+  usa el nombre para encontrar el servidor, y cada cliente tiene el suyo en su red.
+- **Un certificado por instalación**, gratis de Let's Encrypt, que Caddy saca y renueva solo.
+  Un certificado vale para los nombres que lista: el de `oemia.com.ar` no sirve para
+  `antelo.oemia.com.ar`. Existe el comodín `*.oemia.com.ar`, que sirve para todos, pero no
+  conviene: la misma clave quedaría en la PC de cada cliente, y quien la copie de una puede
+  hacerse pasar por cualquier nombre del dominio. Además dura 90 días (Let's Encrypt lo va a
+  bajar a 45), y habría que volver a copiarlo a cada cliente en cada renovación.
+- **Cómo se comprueba que el dominio es nuestro:** como el sistema no se ve desde internet,
+  Let's Encrypt no puede entrar a mirar. Lo comprueba por DNS, con un registro temporal que
+  Caddy escribe solo. Para eso el DNS de `oemia.com.ar` pasa a Cloudflare (gratis), cambiando
+  sus servidores de DNS en NIC Argentina, y Caddy usa una clave de Cloudflare. Caddy necesita
+  el módulo `caddy-dns/cloudflare`, que se elige al bajarlo de caddyserver.com.
+- **La clave de Cloudflare no se puede limitar a un nombre:** edita todo el DNS de
+  `oemia.com.ar`. En la PC de Antelo no importa; en la de otro cliente no puede quedar
+  ([Abiertas](#abiertas), 1).
 - En las PCs de los vendedores no hay que instalar nada. Algunos routers bloquean nombres
   públicos que apuntan a IPs de la red interna (protección contra DNS rebinding); si pasa,
   se agrega el nombre en el DNS del router o en el archivo `hosts` de cada PC.
 - El firewall de Windows abre el 443 solo para la red local.
+- **Todo esto supone una sola red.** Un vendedor de una sucursal en otro edificio no llega a
+  `192.168.x.x`, y el agente del DMS de esa sucursal tampoco ([Abiertas](#abiertas), 2).
 
 ## Etapas
 
@@ -306,12 +327,21 @@ revisarlas de a una.
    y eligen en qué sucursal trabajan, entre las que tienen habilitadas.
 8. **Cada usuario carga sus cuentas** de EPC, SAP y el localizador; misma cuenta, misma sesión.
 9. El admin de la organización puede cargar las cuentas de un vendedor, sin poder verlas.
+10. **Cada sucursal incluye un usuario**; los demás se pagan aparte.
+11. El **código de concesionario de Nissan** va en cada sucursal y puede repetirse.
+12. **Un certificado por instalación**, no un comodín para todas.
 
 ## Abiertas
 
-1. **Código de concesionario de Nissan** (`SAP_DEALER_CODE`, hoy `232111`): va en cada
-   consulta de stock a SAP y el localizador lo usa para marcar como propio el stock del
-   concesionario en la red. ¿Cada sucursal tiene su propio número de cliente de Nissan, o
-   todas usan el mismo? Si es propio de cada una, va en la sucursal; si no, en la organización.
-2. **Usuario incluido por sucursal:** ¿cada sucursal contratada sigue trayendo un usuario
-   incluido, o todos los usuarios se pagan aparte?
+1. **La clave de Cloudflare en la PC de otro cliente.** Resolverlo antes del segundo cliente.
+   Opciones:
+   - Delegar con un CNAME solo el registro `_acme-challenge` de cada instalación a un servicio
+     donde cada cliente tenga una clave que toque únicamente ese registro (acme-dns, o un DNS
+     con claves por registro).
+   - Sacar los certificados en una PC nuestra y mandárselos a cada instalación.
+2. **Sucursales en otros edificios.** ¿Las sucursales de un cliente están unidas por una red
+   (VPN)?
+   - Si lo están, alcanza con lo de arriba.
+   - Si no, el servidor tiene que estar en internet: un solo nombre para todos (tipo
+     `app.oemia.com.ar`) con un certificado común. Ahí cambia dónde corren el EPC y SAP, y el
+     agente del DMS sube por internet.
