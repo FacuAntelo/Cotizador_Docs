@@ -219,7 +219,14 @@ except Exception as e:
   POST/PUT/PATCH/DELETE son escrituras por defecto. Una lectura por POST que el front
   dispara por cada fila se marca sin límite, o una cotización grande choca con él.
 - Una ruta que el front consulta seguido va en `OBS_QUIET_PATHS`.
-- Una pantalla interna usa `require_local_access` (con login, un rol de administrador).
+- Cada ruta declara quién la puede usar, como declara su grupo de límites:
+  `dependencies=[Depends(requires(PERMISO))]` (`app/core/auth.py`, permisos en
+  `app/core/permissions.py`), o en el `APIRouter` si todas piden lo mismo. Sin login, solo
+  con `public()`. `tests/integration/test_route_access.py` falla si una ruta no lo dice.
+- Lo sensible (contraseñas, cuentas, roles, tokens) usa `requires(..., recent_password=True)`:
+  pide haber escrito la contraseña hace poco.
+- Un dato que no todos pueden ver (el costo, los márgenes) no se manda: ocultarlo en la
+  pantalla no alcanza.
 
 ### Tablas nuevas de observabilidad
 

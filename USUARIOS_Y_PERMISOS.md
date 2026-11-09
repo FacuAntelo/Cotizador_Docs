@@ -1,7 +1,10 @@
 # Usuarios, permisos y organizaciones — plan
 
-Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Todavía no hay
-nada construido.
+Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Se construye en
+la rama `feat/usuarios` de los tres repositorios: las etapas 1 a 5 están hechas (ver
+[Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
+[la 3](#cómo-quedó-la-etapa-3), [la 4](#cómo-quedó-la-etapa-4) y
+[la 5](#cómo-quedó-la-etapa-5)). Falta llevarlas juntas a `main` y la 6, publicar en internet.
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
@@ -341,8 +344,8 @@ sesiones de login.
 ## Acceso desde internet
 
 Todos los usuarios, de cualquier sucursal y organización, entran a **esta PC por internet**, en
-un nombre de `oemia.com.ar` (propuesto: `app.oemia.com.ar`, para dejar `oemia.com.ar` libre
-para una web).
+`app.oemia.com.ar` (confirmado el 9 de noviembre de 2026), así `oemia.com.ar` queda libre para
+una web.
 
 - **Cloudflare Tunnel, sin abrir puertos.** El programa `cloudflared` corre como servicio de
   Windows y abre una conexión de salida hacia Cloudflare. Los usuarios entran a Cloudflare, y
@@ -419,6 +422,168 @@ revisarlas de a una.
    del segundo cliente y el aviso de privacidad a los empleados (Ley 25.326). El túnel se prende
    al final de esta etapa.
 
+## Cómo quedó la etapa 1
+
+- **Rutas:** `/auth/login`, `/auth/salir`, `/auth/me`, `/auth/renovar`, `/auth/usar-aca`,
+  `/auth/confirmar-contrasena`, `/auth/contrasena`, `/auth/codigo-verificacion` (y `/activar`),
+  `/auth/sesiones` (Mis dispositivos) y `/auth/avisos-vistos`. Chrome llama solo a
+  `/auth/dbsc/registro` y `/auth/dbsc/renovar`.
+- **Cookies:** `__Host-oemia_sesion` (10 minutos, `Path=/`) y `__Secure-oemia_renovacion`
+  (solo para `/auth/renovar`, y se borra cuando la sesión queda atada a la PC).
+- **CSRF:** las escrituras exigen el header `X-OEMIA: 1`. No lo piden las de DBSC (las manda
+  Chrome por su cuenta) ni `/telemetria` (`sendBeacon` no puede agregar headers).
+- **Cada ruta declara su acceso** con `requires(...)`, `signed_in()` o `public()`
+  (`app/core/auth.py`), y `tests/integration/test_route_access.py` falla si alguna no lo hace.
+  Son públicas solo el login, las dos renovaciones, las de DBSC, `/salud`, la subida del agente
+  del DMS y `/telemetria`.
+- **Roles del sistema:** los escribe el backend al arrancar desde `app/core/permissions.py`.
+- **Costos:** sin `costos.ver`, `/precios/consultar` y `/precios/estado` mandan el costo y los
+  márgenes en `null` (los pedidos, desde la etapa 2).
+- **Una PC que quedó afuera** recibe 409 `sesion_desplazada` con la otra PC (`otra_sesion`) y
+  puede salir, tocar «Usar acá» (sin contraseña, como estaba propuesto) o cerrar la otra («No
+  fui yo»). Si la otra PC sale, esta retoma sola.
+- **El registro de DBSC se ofrece solo al loguearse** y vale 5 minutos: si se ofreciera en
+  cualquier respuesta, alguien con la cookie copiada de un navegador sin DBSC podría atar la
+  sesión a su PC.
+- **DBSC solo anda con HTTPS.** En desarrollo (`http://localhost`) las sesiones quedan sin atar
+  y usan la renovación con el token que cambia. Se prueba de verdad con el túnel, en la etapa 6.
+- **`MONITOR_ALLOWED_HOSTS` salió del `.env`**; entraron `CREDENTIALS_KEY` (se genera con
+  `uv run python -m app.cli generar-clave`), las duraciones de las sesiones, el bloqueo y
+  `RETENTION_AUDIT_DAYS`.
+- **Las claves de `Settings` no se imprimen** (`repr=False`): antes, un error que mostraba la
+  configuración mostraba también las contraseñas de SAP y Simetrical.
+
+## Cómo quedó la etapa 2
+
+- **Migración 0003:** la organización y la sucursal entran obligatorias en las tablas del
+  negocio, sin pasar datos (la base estaba vacía). `dealer_profile` y `dms_deposits` se borran.
+- **Cada ruta recibe de quién son los datos** (`OrgScope` o `BranchScope`, en
+  `app/core/auth.py`). Los repositorios filtran por la organización (o la sucursal); lo de otra
+  organización da 404. Un usuario sin organización recibe 403 `sin_organizacion` y uno sin
+  sucursal, 409 `sin_sucursal`.
+- **Presupuestos:** número por organización (`uq_estimates_org_number`) con un bloqueo por
+  organización; uno nuevo queda en la sucursal activa, con `created_by`; aceptarlo guarda
+  `accepted_by`. La lista es de toda la organización, con la sucursal de cada uno y el filtro
+  `sucursal`.
+- **Datos del concesionario:** `GET /presupuestos/concesionario` arma la razón social, el CUIT y
+  el logo de la organización con la dirección, el teléfono, el mail y la hora de mano de obra de
+  la sucursal. El `PUT` cambia solo lo de la sucursal: lo de la organización se cambia en
+  Administración.
+- **Lista de precios:** una sola, la carga la plataforma (`POST /precios/cargar`, pide la
+  contraseña de nuevo; `GET /precios/lista` para verla). El margen y la estrategia son de cada
+  organización (`PATCH /precios/margen` y `/estrategia`, con `precios.gestionar`).
+- **Pedidos:** sin `costos.ver`, la vista previa y el seguimiento no muestran el costo, y al
+  confirmar el Excel el backend toma el costo de la lista de precios (no le cree al front).
+  Los Excel guardan `created_by`.
+- **Stock del taller:** un agente por sucursal con su token (`dms_agents`, se genera con
+  `uv run python -m app.cli crear-agente-dms` hasta que esté Administración), depósitos por
+  sucursal que se crean solos, y la consulta con la sucursal activa, las demás y el detalle de
+  cada una. La frescura, la salud, Monitoreo y la alerta son por sucursal.
+- **SAP** consulta con el código de la sucursal activa; **el localizador** mide desde su
+  ubicación y marca como propias las sucursales de la organización.
+- **El cupo:** `BranchRepository.seats_in_use` cuenta los usuarios activos con el rol Cotizador;
+  el alta de usuarios lo va a respetar (etapa 5).
+- **Observabilidad:** `request_log`, `dependency_events`, `frontend_events`, `llm_calls` y
+  `quote_runs` guardan la organización (y los costos de la IA, la sucursal).
+- **Salieron del `.env`:** `SAP_DEALER_CODE`, `LOCALIZADOR_ORIGEN_LAT`, `LOCALIZADOR_ORIGEN_LON`,
+  `DMS_EXCLUDED_DEPOSITS`, `DMS_IGNORED_DEPOSITS` y `DMS_AGENT_TOKEN`.
+
+## Cómo quedó la etapa 3
+
+- **Migración 0004:** `integration_accounts` (una cuenta por usuario y servicio, con la
+  contraseña cifrada atada a su fila, la huella, el estado y el último error) e
+  `integration_sessions` (las cookies de SAP, cifradas, por huella).
+- **Mi cuenta:** `GET /cuentas`, `PUT /cuentas/{servicio}` y `DELETE /cuentas/{servicio}`
+  (`epc`, `sap`, `localizador`). Cargar y borrar piden la contraseña de nuevo y quedan en el
+  registro de seguridad. La contraseña de la cuenta nunca vuelve al front.
+- **Sesiones compartidas:** `app/core/integrations.py` arma un grupo de sesiones por servicio
+  (`SessionPool`), una por huella. El EPC tiene un máximo (`EPC_MAX_SESSIONS`): al llegar se
+  cierra la de más tiempo sin uso, y si todas tienen consultas en curso se avisa que hay que
+  esperar (503 `sesiones_ocupadas`).
+- **El cotizador y el asesor** usan el EPC sin saber de usuarios: cada llamada toma la cuenta
+  del usuario del pedido. Sin cuenta, el EPC responde 409 `sin_cuenta` («Cargá tu cuenta de EPC
+  en Mi cuenta») y el resto sigue andando. La vista previa del pedido sin cuenta de SAP avisa y
+  no elige piezas solas.
+- **Las píldoras** (`/epc/session`, `/sap/session`) muestran la sesión de la cuenta del usuario
+  que mira, sin abrirla; `cuenta: false` en el EPC si no la cargó.
+- **El estado de cada cuenta** (`conectada`, `rechazada`, `error`) se actualiza al usarla y se
+  ve en Mi cuenta. Al arrancar se precalientan las cuentas usadas el último día.
+- **Salieron del `.env`** `EPC_USERNAME`, `EPC_PASSWORD`, `SAP_USERNAME`, `SAP_PASSWORD`,
+  `SAP_SESSION_FILE`, `SIMETRICAL_USERNAME` y `SIMETRICAL_PASSWORD`. En el `.env` de esta PC
+  quedaron comentadas, sin borrar, hasta cargarlas en Mi cuenta. Entró `EPC_MAX_SESSIONS`.
+
+## Cómo quedó la etapa 4
+
+- **La API va bajo `/api`** (`app/core/paths.py`). Los límites de uso, los registros y la
+  configuración siguen nombrando las rutas sin el prefijo. En desarrollo el servidor de Vite
+  pasa `/api` a `127.0.0.1:8000` (`vite.config.ts`, y `VITE_API_URL=/api` en
+  `.env.development`): el front y la API quedan en el mismo nombre, como en productivo.
+- **`npm run gen:api`** (`scripts/gen-api.mjs`) genera los tipos sin el prefijo, y el documento
+  de `/telemetria` ya no rompe la generación.
+- **El front arranca por `AuthGate`:** sin sesión, el ingreso (con el código de verificación si
+  el usuario lo tiene); si otra PC tomó el usuario, «Tu usuario se abrió en otra PC» con «Usar
+  acá», «No fui yo: cerrar esa sesión» y Salir; con la contraseña temporal, el cambio
+  obligatorio. `/auth/me` se vuelve a leer cada 30 segundos.
+- **El cliente** manda `X-OEMIA: 1`, renueva la cookie corta una sola vez cuando vence (aunque
+  fallen varios pedidos a la vez) y repite el pedido.
+- **El menú** muestra lo que permiten los roles, y cada pantalla pide su permiso. Arriba van el
+  selector de sucursal (`PUT /auth/sucursal`), Mi cuenta y el aviso «Nuevo ingreso desde…
+  ¿fuiste vos?».
+- **Mi cuenta:** cambio de contraseña, código de verificación (la clave para escribirla en la app
+  y el enlace `otpauth://`), Mis dispositivos con «Protegida» o «Sin protección» y las cuentas
+  de EPC, SAP y el localizador. Lo sensible abre el diálogo para confirmar la contraseña.
+- **Presupuestos:** la sucursal de cada uno y el filtro por sucursal, para quien trabaja en
+  varias. **Cotizador:** el stock del taller suma «otras N» y el detalle de cada sucursal.
+  **Lista de precios:** cargar la lista y las compatibilidades es de la plataforma; el margen y
+  el criterio se editan con `precios.gestionar`. Las píldoras de EPC y SAP dicen «sin cuenta»
+  si falta cargarla.
+- **Para probar en esta PC sin tocar `cotizador_dev`:** `scripts/sembrar_desarrollo.py` arma
+  `cotizador_usuarios_dev` con una organización, dos sucursales y el usuario `prueba.vendedor`.
+
+## Cómo quedó la etapa 5
+
+- **Rutas** bajo `/administracion` (`app/routers/admin.py`): `roles`, `organizaciones` (con sus
+  `sucursales`), `sucursales/{id}` (con sus `depositos` y `agentes`), `usuarios` (con `roles`,
+  `sucursales`, `desactivar`, `reactivar`, `contrasena`, `desbloquear`, `cerrar-sesiones` y
+  `cuentas`) y `registro`. Un Administrador (`usuarios.gestionar`) ve y cambia solo lo de su
+  organización: lo de otra da 404, también si la pide por `?organizacion=`. La plataforma ve
+  todas y es la única que toca organizaciones, sucursales, depósitos y agentes.
+- **Las reglas** están en `app/services/admin.py` y se revisan en una transacción con la fila
+  de la organización bloqueada (`AdminRepository.organization_transaction`): dos altas a la
+  vez no se pasan del cupo ni dejan a la organización sin Administrador.
+  - **Cupo:** crear o reactivar un Cotizador, o darle el rol, por encima de
+    `cotizador_seats` da 409 `sin_cupo` con el cupo y cómo ampliarlo. El cupo no se puede
+    bajar por debajo de los que ya cotizan.
+  - **Último Administrador:** no se le saca el rol ni se lo desactiva (409
+    `ultimo_administrador`).
+  - **El propio usuario:** nadie cambia sus roles, ni se desactiva ni se resetea la
+    contraseña desde acá (409 `propio_usuario`); cerrar sus sesiones deja la actual.
+  - Solo se asignan Cotizador, Encargado y Administrador, y los usuarios de la plataforma
+    no aparecen. Un Cotizador necesita al menos una sucursal. Una sucursal desactivada se
+    puede conservar, pero no sumar.
+- **Piden la contraseña de nuevo:** crear usuarios, cambiar roles, desactivar, reactivar,
+  resetear la contraseña, cerrar sesiones, cargar o borrar cuentas y todo lo de la
+  plataforma. No la piden el nombre, las sucursales ni desbloquear.
+- **Desactivar** corta todas las sesiones al instante (`usuario_desactivado`); **resetear** pone
+  una contraseña temporal, que el usuario cambia al entrar, y también las cierra.
+- **Registro de seguridad:** cada acción queda con quién la hizo, a quién y desde dónde. La
+  migración 0005 suma lo de la plataforma: organizaciones y sucursales creadas o modificadas,
+  depósitos y tokens de los agentes del DMS. Un test falla si el código escribe una acción
+  que la base no acepta.
+- **Monitoreo** se filtra por organización (`?organizacion=` en rendimiento, costos, calidad
+  de la IA, integraciones, negocio y navegador); los recursos del servidor y las alertas son
+  de todos.
+- **El front** suma Administración con una pestaña por permiso: Usuarios, Organizaciones,
+  Lista de precios, Registro de seguridad y Monitoreo (`/monitoreo` lleva ahí). El alta
+  propone una contraseña temporal de cuatro palabras fácil de dictar; el token de un agente se
+  muestra una sola vez, con un botón para copiarlo.
+- **La lista de precios de la plataforma** lee `/precios/lista` (antes pedía `/precios/estado`,
+  que exige organización) y cargarla abre el diálogo de la contraseña.
+- **Mi cuenta** muestra las cuentas de EPC, SAP y el localizador solo a quien cotiza.
+- **Para probar en esta PC:** `scripts/sembrar_desarrollo.py` suma `prueba.plataforma`, un
+  administrador de plataforma sin código de verificación que existe solo en la base de
+  desarrollo.
+
 ## Decisiones tomadas
 
 1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
@@ -446,12 +611,12 @@ revisarlas de a una.
     Windows; en los demás navegadores, renovación que detecta reusos y sesiones más cortas.
     Lo sensible pide la contraseña de nuevo.
 17. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
+18. **El nombre público es `app.oemia.com.ar`.**
+19. **El usuario de plataforma entra desde cualquier navegador**, con contraseña y el código de
+    verificación de la app del celular (obligatorio). No se le exige la sesión atada a la PC.
 
 ## Abiertas
 
-1. **El nombre público:** `app.oemia.com.ar` u otro.
-2. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
+1. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
    la contraseña de nuevo.
-3. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
-4. **El usuario de plataforma solo entra con la sesión atada a la PC** (Chrome en Windows), y
-   los demás usuarios pueden usar cualquier navegador (propuesto).
+2. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
