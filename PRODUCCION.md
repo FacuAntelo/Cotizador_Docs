@@ -130,7 +130,7 @@ el log.
 - Si alguien lo levantara con `uvicorn main:app`, uvicorn cambiaría la IP de la conexión y el
   backend de productivo rechazaría todos los pedidos con 403: falla a la vista, no en silencio.
 - **Al prender la PC:** una tarea programada de Windows corre `produccion.ps1` y lo reinicia si
-  se cae (pendiente, bloque 5).
+  se cae (pendiente, bloque 4).
 - **Publicar una versión nueva:** ver abajo.
 
 ## Publicar una versión nueva
@@ -189,11 +189,18 @@ Los permisos sobre las tablas los da el backend cada vez que arranca, y antes de
 revisa los usuarios: si la app es dueña de tablas, superusuario o se saltea RLS, o si el
 sistema no se lo saltea, no arranca.
 
-**Pendiente (bloque 4, lo hace el usuario):**
+**Solo en esta PC** (bloque 4, lo hace el usuario como administrador), en
+`C:\Program Files\PostgreSQL\18\data`:
 
-- `listen_addresses = 'localhost'` y `pg_hba.conf` solo con `127.0.0.1/32` y `::1/128`
-  (`scram-sha-256`); `log_connections = on`.
-- Contraseña fuerte para `postgres`, guardada fuera de la PC.
+| Qué | Valor | Estado |
+|---|---|---|
+| `postgresql.conf` | `listen_addresses = 'localhost'`: escucha solo en `127.0.0.1` y `::1`, nadie de la red llega al 5432 | hecho (9 de noviembre) |
+| `postgresql.conf` | `log_connections = on` (sin el `#` adelante): cada conexión queda en el log de Postgres | pendiente |
+| `pg_hba.conf` | Solo `host all all 127.0.0.1/32 scram-sha-256` y `host all all ::1/128 scram-sha-256`; el resto, con `#` | hecho (9 de noviembre) |
+| Usuario `postgres` | Contraseña fuerte, guardada fuera de la PC (`psql -h 127.0.0.1 -U postgres -c "\password postgres"`) | hecho (9 de noviembre) |
+
+Después de cambiar los archivos: `Restart-Service postgresql-x64-18` (PowerShell como
+administrador). En Docker corre solo Grafana, que no usa Postgres.
 
 ## Cloudflare
 
@@ -201,7 +208,7 @@ sistema no se lo saltea, no arranca.
 redirige a `oemia.ar`. Los dos están delegados a Cloudflare desde NIC Argentina (hecho el 9
 de noviembre de 2026).
 
-**Redirección de `oemia.com.ar`** (pendiente, la hace el usuario), en la zona `oemia.com.ar`:
+**Redirección de `oemia.com.ar`** (hecha el 9 de noviembre de 2026), en la zona `oemia.com.ar`:
 
 1. **DNS → Registros:** un registro `A` para `@` y otro para `www`, los dos con la IP
    `192.0.2.1` y **con proxy** (nube naranja). Esa IP no es de nadie: Cloudflare contesta antes
@@ -230,7 +237,7 @@ de noviembre de 2026).
 
 ## Windows
 
-*Pendiente (bloque 5).*
+*Pendiente (bloque 4).*
 
 - Que no se suspenda ni hiberne.
 - Actualizaciones que reinicien fuera del horario de atención.
@@ -258,6 +265,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-09 | Etapa 6, bloque 4: `oemia.com.ar` redirige a `oemia.ar` y Postgres escucha solo en esta PC (`listen_addresses`, `pg_hba.conf`, contraseña nueva de `postgres`). |
 | 2026-11-09 | El nombre público pasa a `app.oemia.ar`; `oemia.com.ar` redirige a `oemia.ar`. Los dos dominios, en Cloudflare. |
 | 2026-11-09 | Etapa 6, bloque 3: tres usuarios de Postgres (app con Row Level Security, sistema y dueño), `scripts/preparar_postgres.py` y la base nueva `cotizador`. |
 | 2026-11-09 | Etapa 6, bloque 2: la plataforma entra siempre con el código, `configurar-codigo`, quitar el código desde Administración y «Usar acá» con contraseña. |

@@ -821,6 +821,18 @@ En la rama `feat/publicar` de los tres repositorios.
 - Probado en el navegador: el alta con la sugerencia, el mail repetido, la edición y entrar
   con el mail.
 
+**Bloque 4, lo que hace el usuario (en curso):**
+
+- **`oemia.com.ar` redirige a `oemia.ar`** (hecho el 9 de noviembre): 301 directo a https,
+  con el camino y la consulta (`http://www.oemia.com.ar/prueba?x=1` termina en
+  `https://oemia.ar/prueba?x=1`).
+- **Postgres solo en esta PC** (hecho el 9 de noviembre): `listen_addresses = 'localhost'`
+  (escucha solo en `127.0.0.1` y `::1`), `pg_hba.conf` solo con esas dos direcciones y
+  `scram-sha-256`, y contraseña nueva de `postgres`. Falta prender `log_connections`.
+- La etapa 6 hasta acá se mergeó a `main` para armar la carpeta de productivo desde ahí.
+- Sigue: la carpeta de productivo, los usuarios y la base `cotizador`, `crear-admin`,
+  `cloudflared`, el backend al prender la PC, la PC como servidor y cargar la base.
+
 ## Decisiones tomadas
 
 1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
