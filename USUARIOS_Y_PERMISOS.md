@@ -1,32 +1,36 @@
 # Usuarios, permisos y organizaciones — plan
 
-Estado: plan acordado con el usuario el 8 de noviembre de 2026. Todavía no hay nada construido.
+Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. Todavía no hay
+nada construido.
 Lo que queda por resolver está en [Abiertas](#abiertas).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
 
 ## Qué se busca
 
-- Que cada persona entre con su usuario y vea solo lo que su rol le permite.
+- Que cada persona entre con su usuario y vea solo lo que sus roles le permiten.
 - Que el sistema sirva para una **organización con varias sucursales**, cada una con sus
-  depósitos, y más adelante para varias organizaciones.
+  depósitos, y para varias organizaciones.
 - Un **administrador de plataforma** (el dueño del sistema) que da de alta organizaciones,
-  sucursales, depósitos y usuarios, y es el único que ve **Monitoreo**.
-- Que la **lista de precios** y los **costos** los vea solo quien tenga permiso.
-- Cobrar **por sucursal**: cada sucursal trae un usuario incluido y los demás se pagan aparte.
+  sucursales, depósitos y usuarios, carga la lista de precios de Nissan y es el único que ve
+  **Monitoreo**.
+- Que los **costos** y el **margen** los vea y los cambie solo quien tenga permiso.
+- Cobrar **por usuario que cotiza**: los usuarios que solo administran no se cobran.
 - Que **cada usuario use sus propias cuentas de EPC, SAP y el localizador**, y que dos
   usuarios con la misma cuenta compartan una sola sesión.
+- Que un usuario se use **en un solo lugar a la vez**, sin tener que loguearse todos los días.
 
 ## Cómo se organiza
 
 ```
-Plataforma (administrador de plataforma)
-└── Organización   razón social, CUIT, logo, usuarios extra contratados
+Plataforma (administrador de plataforma): la lista de precios y las compatibilidades de Nissan
+└── Organización   razón social, CUIT, logo, usuarios que cotizan contratados, margen y
+                   estrategia de cotización
     └── Sucursal   dirección, teléfono, mail, código de concesionario de Nissan,
                    ubicación para el localizador,
                    precios de taller, su servidor con el DMS y el agente que sube el stock
         └── Depósito   nombre en el DMS, si suma al stock por defecto, si se ignora
-Usuario → una organización, un rol, una o más sucursales (una es la de por defecto),
+Usuario → una organización, uno o más roles, una o más sucursales (una es la de por defecto),
           sus cuentas de EPC, SAP y localizador
 ```
 
@@ -37,30 +41,31 @@ en las tablas actuales como columnas obligatorias desde el principio, sin pasar 
 
 | Tabla | Columnas principales |
 |---|---|
-| `organizations` | nombre, razón social, CUIT, logo, `extra_users` (usuarios contratados además de los incluidos), activa |
+| `organizations` | nombre, razón social, CUIT, logo, `cotizador_seats` (usuarios que cotizan contratados), `dealer_margin_percent`, `quote_strategy`, activa |
 | `branches` | organización, nombre, dirección, teléfono, mail, `dealer_code` (código de concesionario de Nissan, puede repetirse entre sucursales), latitud y longitud, activa |
 | `deposits` | sucursal, código en el DMS (único dentro de la sucursal: dos sucursales pueden tener su `PICKING`), nombre, `counts_by_default`, `ignored` |
-| `users` | organización (vacía solo para el administrador de plataforma), usuario (único en todo el sistema), nombre a mostrar, hash de la contraseña, `must_change_password`, activo, intentos fallidos, bloqueado hasta, último ingreso, creado por |
+| `users` | organización (vacía solo para el administrador de plataforma), usuario (único en todo el sistema), nombre a mostrar, hash de la contraseña, `must_change_password`, código de verificación (secreto cifrado y si está activo), `active_session_id`, activo, intentos fallidos, bloqueado hasta, último ingreso, creado por |
 | `roles` | organización (vacía para los roles del sistema), nombre, si es del sistema |
 | `role_permissions` | rol, permiso. Los permisos válidos los define el código (un `CHECK` con la misma lista, como los estados) |
+| `user_roles` | usuario, rol |
 | `user_branches` | usuario, sucursal, si es la de por defecto |
-| `sessions` | usuario, hash del token, creada, último uso, vence, sucursal activa, IP, navegador, revocada |
+| `sessions` | una por PC o navegador: usuario, hash del token, creada, último uso, vence, sucursal activa, IP, navegador, revocada |
+| `audit_log` | cuándo, organización, quién, qué hizo, sobre quién o qué, IP, detalle |
 | `integration_accounts` | usuario, servicio (`epc`, `sap`, `localizador`), usuario de la cuenta, contraseña cifrada, huella, estado y último error |
 | `dms_agents` | sucursal, nombre, hash del token, última subida |
 
-Un usuario tiene **un solo rol** (`users.role_id`). Si algún día hace falta combinar roles, se
-pasa a una tabla `user_roles`.
+Un usuario puede tener **varios roles** (`user_roles`), y sus permisos son la suma.
 
 ## De quién es cada dato
 
 | Hoy | Pasa a ser de | Cambio |
 |---|---|---|
-| `estimates` y lo que cuelga (renglones, pedidos, insumos, orden del seguro) | Sucursal | El número es único **por organización** (`uq_estimates_org_number`) y el bloqueo que lo asigna, una clave por organización. El presupuesto dice de qué sucursal es |
+| `estimates` y lo que cuelga (renglones, pedidos, insumos, orden del seguro) | Organización, con la sucursal donde se hizo | El número es único **por organización** (`uq_estimates_org_number`) y el bloqueo que lo asigna, una clave por organización. Se ven los de toda la organización |
 | `loans` | Sucursal | — |
 | `dms_stock` | Depósito | La clave pasa a ser (depósito, código) |
 | `dms_stock_uploads` | Agente del DMS | — |
-| `price_items`, `price_conflicts`, `price_variants`, `price_list` | Organización | `price_list` deja de ser una sola fila |
-| `part_compatibilities`, `compatibility_list` | Organización | Ídem |
+| `price_items`, `price_conflicts`, `price_variants`, `price_list` | Compartida | La lista de Nissan es la misma para todos y la carga el administrador de plataforma. El margen y la estrategia salen de `price_list` y pasan a `organizations` |
+| `part_compatibilities`, `compatibility_list` | Compartida | Ídem: las carga el administrador de plataforma |
 | `insurers` | Organización | `uq_insurers_name` pasa a ser por organización |
 | `dealer_profile` | Se reparte | Razón social, CUIT y logo en `organizations`; dirección, teléfono y mail en `branches` |
 | `workshop_prices` | Sucursal | — |
@@ -75,78 +80,110 @@ Auditoría del negocio junto con el login: `created_by` y `accepted_by` en los p
 ## Roles y permisos
 
 Los permisos son textos fijos que define el código, porque es el código el que los revisa. Los
-roles son grupos de permisos guardados en la base: arrancan los cuatro del sistema y más
-adelante cada organización podría armar los suyos.
+roles son grupos de permisos guardados en la base: arrancan los del sistema y más adelante cada
+organización podría armar los suyos.
 
 | Permiso | Qué habilita |
 |---|---|
 | `cotizar` | El cotizador: match, EPC, SAP, localizador y asesor |
-| `presupuestos` | Ver, crear, editar y aceptar presupuestos |
+| `presupuestos` | Crear, editar y aceptar presupuestos |
+| `presupuestos.ver` | Ver y descargar los presupuestos de toda la organización |
 | `pedidos` | Confirmar el Excel y registrar llegadas y separaciones |
 | `prestamos` | Ver y cargar préstamos |
 | `costos.ver` | Ver costo y márgenes en el cotizador, los presupuestos y los pedidos |
-| `precios.gestionar` | La pantalla de lista de precios: subir la lista y las compatibilidades, cambiar margen y estrategia |
+| `precios.gestionar` | Margen y estrategia de cotización de la organización |
 | `aseguradoras.gestionar` | Alta, baja y modificación de compañías de seguro |
 | `sucursal.configurar` | Datos de la sucursal y precios de taller |
-| `usuarios.gestionar` | Usuarios de su organización, dentro del cupo |
-| `plataforma.administrar` | Organizaciones, sucursales, depósitos, agentes del DMS y usuarios de todas las organizaciones |
+| `usuarios.gestionar` | Usuarios de su organización, dentro del cupo, y su registro de seguridad |
+| `plataforma.administrar` | Organizaciones, sucursales, depósitos, agentes del DMS, usuarios de todas las organizaciones, la lista de precios y las compatibilidades de Nissan, y el registro de seguridad completo |
 | `monitoreo.ver` | Monitoreo y la salud detallada |
 
-| Permiso | Admin de plataforma | Admin de la organización | Encargado | Vendedor |
-|---|:-:|:-:|:-:|:-:|
-| `cotizar`, `presupuestos`, `pedidos`, `prestamos` | — | ✓ | ✓ | ✓ |
-| `costos.ver` | — | ✓ | ✓ | — |
-| `precios.gestionar` | — | ✓ | ✓ | — |
-| `aseguradoras.gestionar`, `sucursal.configurar` | — | ✓ | ✓ | — |
-| `usuarios.gestionar` | — | ✓ | — | — |
-| `plataforma.administrar`, `monitoreo.ver` | ✓ | — | — | — |
+Los roles de una organización se combinan:
 
-El administrador de plataforma no pertenece a ninguna organización. Para usar el cotizador
-necesita un usuario común dentro de una.
+| Permiso | Cotizador | Encargado | Administrador | Plataforma |
+|---|:-:|:-:|:-:|:-:|
+| `cotizar`, `presupuestos`, `pedidos`, `prestamos` | ✓ | — | — | — |
+| `presupuestos.ver` | ✓ | — | ✓ | — |
+| `costos.ver`, `aseguradoras.gestionar`, `sucursal.configurar` | — | ✓ | ✓ | — |
+| `precios.gestionar`, `usuarios.gestionar` | — | — | ✓ | — |
+| `plataforma.administrar`, `monitoreo.ver` | — | — | — | ✓ |
+
+- Un repuestero es **Cotizador**.
+- Un jefe de repuestos es **Cotizador + Encargado**.
+- El dueño que cotiza es **Cotizador + Administrador**.
+- Alguien que administra y no cotiza es solo **Administrador**, y no ocupa cupo.
+
+El rol **Plataforma** no se combina con los demás: ese usuario no pertenece a ninguna
+organización. El dueño del sistema tiene dos usuarios, el de plataforma y uno común para
+cotizar: el poderoso se usa poco y se expone menos.
 
 **Ocultar la pantalla no alcanza.** Hoy el cotizador recibe el costo y los márgenes de cada
 repuesto (`/precios/consultar`) y los pedidos muestran el costo. Sin `costos.ver`, el backend
-no manda esos campos; sin `precios.gestionar`, rechaza las rutas de la lista con 403. El precio
-de venta lo ve todo el que cotiza.
+no manda esos campos; sin `precios.gestionar`, rechaza el cambio de margen y estrategia con
+403. El precio de venta lo ve todo el que cotiza.
 
 **Cada ruta declara su permiso**, como hoy declara su grupo de límite de uso, y un test falla
 si alguna ruta no lo dice. Las únicas sin permiso son `/auth/login`, `/salud` y la subida del
 agente del DMS, que usa su propio token.
 
-## Cupos: sucursales y usuarios
+**Nadie se queda sin administrador:** no se puede sacar el rol Administrador ni desactivar al
+último que tiene la organización, y nadie puede cambiarse sus propios roles.
+
+## Cupos: usuarios que cotizan
 
 - **Los usuarios son de la organización**, no de una sucursal. Cada uno tiene habilitadas una
   o más sucursales y elige en cuál está trabajando.
-- Se paga por dar de alta una sucursal y por dar de alta usuarios. El cupo de la organización
-  es `sucursales activas × USERS_INCLUDED_PER_BRANCH + extra_users`, con un usuario incluido
-  por sucursal.
-- Cuentan los usuarios activos. El administrador de plataforma no cuenta.
-- Crear o reactivar un usuario por encima del cupo se rechaza con un mensaje que dice el
-  cupo y cómo ampliarlo. Desactivar una sucursal que dejaría más usuarios que cupo también se
-  rechaza: primero hay que desactivar usuarios.
-- Solo el administrador de plataforma crea sucursales y cambia `extra_users`. Lo que se cobra
-  queda afuera del sistema: el sistema cuenta y pone el límite.
-- Administración muestra por organización: sucursales, usuarios usados y cupo (ej. «3 de 4»).
+- **Se cobra por usuario que cotiza**, que es lo que cuesta (la IA y las sesiones de EPC).
+  Cuentan los usuarios activos con el rol Cotizador. Los que solo administran y el
+  administrador de plataforma no cuentan.
+- El cupo es `organizations.cotizador_seats`, y solo lo cambia el administrador de plataforma.
+- Crear o reactivar un usuario Cotizador, o darle el rol a uno que no lo tenía, por encima del
+  cupo se rechaza con un mensaje que dice el cupo y cómo ampliarlo.
+- Las sucursales las crea solo el administrador de plataforma. Si se cobran, se cobra afuera
+  del sistema: el sistema no las limita.
+- Administración muestra por organización las sucursales y el cupo (ej. «cotizan 3 de 4»).
 
 ## Login y sesiones
 
 - **Usuario y contraseña.** El usuario es único en todo el sistema, así que al entrar no hay
   que elegir organización.
-- **Contraseñas con Argon2id.** Mínimo 12 caracteres, sin reglas de composición.
-- **Sesión en una cookie `HttpOnly`, `Secure` y `SameSite=Lax`**, con un token opaco cuyo hash
-  se guarda en `sessions`. Salir revoca la sesión y desactivar un usuario corta todas las suyas.
-  Nada de tokens en `localStorage`, que se pueden robar con un script.
+- **Contraseñas con Argon2id.** Mínimo 12 caracteres, sin reglas de composición. Se rechazan
+  las muy comunes y las que contienen el usuario.
+- **Código de verificación** de 6 dígitos de una app (Google Authenticator o similar), que se
+  pide al loguearse: obligatorio para el administrador de plataforma, opcional para los
+  Administradores.
+- **Cada PC queda recordada**, como en Mercado Libre: la sesión vive en una cookie `HttpOnly`,
+  `Secure` y `SameSite=Lax`, con un token opaco cuyo hash se guarda en `sessions`. Vence a los
+  **30 días sin uso** y a los **90 días** como máximo; un vendedor que entra todos los días se
+  loguea cada tres meses. El administrador de plataforma, más corto: 12 horas sin uso y 7 días
+  como máximo. Nada de tokens en `localStorage`, que se pueden robar con un script.
+- **Un solo lugar a la vez.** El usuario tiene una sola sesión en uso (`users.active_session_id`).
+  Al entrar desde otra PC, la anterior deja de andar y muestra «Tu usuario se abrió en otra
+  PC»; el front se entera en su próximo pedido o en menos de 30 segundos. Si vuelve a la
+  primera PC, toca **Usar acá** y la retoma sin escribir la contraseña, porque esa PC sigue
+  recordada; la otra queda afuera. Varias pestañas del mismo navegador son la misma sesión.
+  Si alguien le roba la sesión a un usuario, el usuario lo nota porque lo sacan.
+- **Mis dispositivos**, en Mi cuenta: cada PC recordada con navegador, IP y último uso, y un
+  botón para cerrarla. Un Administrador puede cerrar todas las de un usuario de su
+  organización.
+- Cambiar o resetear la contraseña cierra todas las demás sesiones. Desactivar un usuario
+  corta todas las suyas.
 - **Protección contra CSRF:** las rutas que escriben exigen un header propio del front, que un
   sitio ajeno no puede mandar sin pasar por CORS.
-- **Vence a las 12 horas sin uso** y dura como máximo 7 días.
 - **Fuerza bruta:** además del límite por IP que ya existe (`RATE_LIMIT_LOGIN`), bloqueo de
-  15 minutos después de 5 fallos seguidos del mismo usuario. Siempre el mismo mensaje
-  («usuario o contraseña incorrectos») y nunca la contraseña en el log.
+  15 minutos después de 5 fallos seguidos del mismo usuario; un Administrador puede
+  desbloquearlo antes. Siempre el mismo mensaje («usuario o contraseña incorrectos») y nunca la
+  contraseña en el log.
 - **Alta:** el admin crea el usuario con una contraseña temporal y el usuario la cambia al
   entrar. No hay mails: si alguien la olvida, un admin se la resetea.
 - **El administrador de plataforma se crea con un comando** en la PC del servidor
-  (`uv run python -m app.cli crear-admin`), que pide la contraseña ahí mismo. Desde la web no
-  se pueden crear administradores de plataforma.
+  (`uv run python -m app.cli crear-admin`), que pide la contraseña ahí mismo y configura el
+  código de verificación. Desde la web no se pueden crear administradores de plataforma.
+- **Registro de seguridad** (`audit_log`): los logins buenos y fallidos, los bloqueos, los
+  cambios y reseteos de contraseña, las altas, bajas y cambios de rol, las sesiones cerradas y
+  quién cargó cada cuenta de EPC, SAP o el localizador. Lo ve el administrador de plataforma
+  completo y cada Administrador el de su organización. Se guarda `RETENTION_AUDIT_DAYS` (365 por
+  defecto).
 - `GET /auth/me` devuelve el usuario, su organización, sus sucursales, la activa y sus
   permisos. El front arma el menú con eso, y el backend vuelve a revisar el permiso en cada
   ruta.
@@ -163,8 +200,8 @@ cuenta, y cada usuario carga las suyas en **Mi cuenta**.
   base sin el `.env` no deja leer ninguna. Si se pierde la clave, cada usuario vuelve a cargar
   sus cuentas.
 - **Nadie la vuelve a ver:** la pantalla muestra el usuario de la cuenta y si conecta, pero la
-  contraseña solo se puede reemplazar. Un admin de la organización puede cargarla por un
-  vendedor, con la misma regla.
+  contraseña solo se puede reemplazar. Un Administrador puede cargarla por un usuario de su
+  organización, con la misma regla.
 - **Dos usuarios con la misma cuenta comparten una sola sesión.** Las sesiones se identifican
   por una huella de servicio, usuario **y contraseña** (un HMAC con la clave de cifrado). Si
   bastara el usuario, cualquiera podría escribir la cuenta de otro con una contraseña
@@ -220,18 +257,25 @@ de una, solo esa aparece desactualizada, en el cotizador y en Monitoreo.
 
 ## Pantallas
 
-- **Login** y cambio de contraseña obligatorio la primera vez.
-- **Menú principal:** Cotizador, Presupuestos, Préstamos y Lista de precios (esta solo con
-  `precios.gestionar`). Monitoreo sale de acá.
+- **Login**, con el código de verificación si el usuario lo tiene, y cambio de contraseña
+  obligatorio la primera vez.
+- **Menú principal:** Cotizador, Presupuestos, Préstamos y Lista de precios, cada uno según los
+  permisos. Monitoreo sale de acá.
+- **Presupuestos:** los de toda la organización, con la sucursal de cada uno y un filtro por
+  sucursal. Uno nuevo queda en la sucursal activa.
+- **Lista de precios** de la organización: de cuándo es la lista de Nissan, y el margen y la
+  estrategia (con `precios.gestionar`).
 - **Selector de sucursal** arriba, para quien trabaja en más de una.
-- **Mi cuenta:** cambiar la contraseña, cargar las cuentas de EPC, SAP y el localizador y ver
-  si conectan, y salir.
+- **Mi cuenta:** cambiar la contraseña, el código de verificación, Mis dispositivos, cargar las
+  cuentas de EPC, SAP y el localizador y ver si conectan, y salir.
 - **Administración**, según los permisos:
   - Plataforma: organizaciones (con el cupo), sucursales con sus depósitos (si suman, si se
     ignoran) y el agente del DMS de cada una (generar el token, que se muestra una sola vez),
-    y usuarios de todas.
-  - Organización: sus usuarios (alta con contraseña temporal, rol, sucursales, desactivar,
-    resetear la contraseña, cargar sus cuentas).
+    usuarios de todas, la lista de precios y las compatibilidades de Nissan, y el registro de
+    seguridad.
+  - Organización: sus usuarios (alta con contraseña temporal, roles, sucursales, desactivar,
+    resetear la contraseña, desbloquear, cerrar sus sesiones, cargar sus cuentas) y su registro
+    de seguridad.
   - **Monitoreo**, filtrable por organización. Reemplaza el acceso solo desde esta PC
     (`MONITOR_ALLOWED_HOSTS`).
 
@@ -246,8 +290,8 @@ de una, solo esa aparece desactualizada, en el cotizador y en Monitoreo.
 | `MONITOR_ALLOWED_HOSTS` | El permiso `monitoreo.ver` |
 | Cuentas y sesión de EPC, SAP y Simetrical | Las cuentas de cada usuario |
 
-Entran: `CREDENTIALS_KEY`, `USERS_INCLUDED_PER_BRANCH`, `EPC_MAX_SESSIONS` y la duración de
-las sesiones de login.
+Entran: `CREDENTIALS_KEY`, `EPC_MAX_SESSIONS`, `RETENTION_AUDIT_DAYS` y la duración de las
+sesiones de login.
 
 ## Aislamiento entre organizaciones
 
@@ -283,15 +327,18 @@ para una web).
 - **Nada se publica antes del login.** Hoy cualquiera que llegue cotiza con las cuentas de EPC
   y SAP, gasta la IA y ve los costos. Además `MONITOR_ALLOWED_HOSTS` deja ver Monitoreo desde
   `127.0.0.1`, y con el túnel todo llega desde ahí: Monitoreo quedaría abierto a internet. El
-  túnel se prende con las etapas 1 a 4 en `main` y Monitoreo detrás de `monitoreo.ver`.
+  túnel se prende con las etapas 1 a 5 en `main` y Monitoreo detrás de `monitoreo.ver`.
 - **En productivo se apagan `/docs`, `/redoc` y `/openapi.json`.**
 - **Los agentes del DMS** de cada sucursal suben el stock por internet a la dirección pública,
   con su token.
 - **Cotizar responde en streaming** (`text/event-stream`). Hay que comprobar que pase por
   Cloudflare sin demorarse y que ningún pedido quede más de 100 segundos sin responder, que es
   lo que Cloudflare espera antes de cortar (error 524).
-- **Opcional:** una regla del firewall de Cloudflare que deje entrar solo desde Argentina saca
-  de encima a la mayoría de los bots. Un usuario de viaje no podría entrar.
+- **Solo desde Argentina:** una regla del firewall de Cloudflare (las reglas propias son
+  gratis, hasta 5) saca de encima a la mayoría de los bots. Un usuario de viaje no podría
+  entrar. Por provincia no se puede en el plan gratis (el campo es de los planes Business y
+  Enterprise), y la provincia que se deduce de una IP no es confiable, sobre todo con datos
+  del celular.
 - **Esta PC pasa a ser el servidor de todos.** Si se apaga, se reinicia por una actualización o
   se corta internet en Antelo, no cotiza nadie de ninguna sucursal. Hace falta que no se
   suspenda, que las actualizaciones reinicien fuera de horario, una UPS y un respaldo de la
@@ -301,45 +348,62 @@ para una web).
 
 ## Etapas
 
-Las etapas 1 a 4 llegan a `main` juntas: un backend que pide login sin un front que lo tenga
-deja la app inutilizable. Se trabajan en una rama de integración, con un commit por etapa para
+Las etapas 1 a 5 llegan a `main` juntas: un backend que pide login sin un front que lo tenga
+deja la app inutilizable, y sin Administración los usuarios solo se podrían crear desde la
+consola. Se trabajan en una rama de integración, con un commit y sus tests por etapa para
 revisarlas de a una.
 
-1. **Login en el backend:** usuarios, roles, permisos, sesiones, `/auth/login`, `/auth/logout`,
-   `/auth/me`, cambio de contraseña, el comando `crear-admin`, la dependencia de permisos en
-   cada ruta y `bind_user`.
+1. **Login en el backend:** usuarios, roles combinables, permisos, sesiones por PC con un solo
+   lugar a la vez, el código de verificación, `/auth/login`, `/auth/logout`, `/auth/me`, cambio
+   de contraseña, el registro de seguridad, el comando `crear-admin`, la dependencia de
+   permisos en cada ruta y `bind_user`.
 2. **Organizaciones, sucursales y depósitos:** las tablas, la organización y la sucursal en las
-   tablas actuales, los repositorios filtrados, el número de presupuesto por organización, el
-   agente del DMS por sucursal, los cupos y lo que sale del `.env`.
+   tablas actuales, los repositorios filtrados, el número de presupuesto por organización, la
+   lista de precios compartida con el margen y la estrategia por organización, el agente del
+   DMS por sucursal, el cupo y lo que sale del `.env`.
 3. **Cuentas por usuario:** `integration_accounts`, el cifrado y las sesiones compartidas de
    EPC, SAP y el localizador.
-4. **Front:** login, menú por permisos, selector de sucursal, Mi cuenta, stock por sucursal en
-   el cotizador, costos y lista de precios según permiso, y Monitoreo dentro de Administración.
-5. **Administración:** organizaciones, sucursales, depósitos, agentes del DMS y usuarios, con
-   los cupos.
+4. **Front:** login, menú por permisos, selector de sucursal, Mi cuenta con Mis dispositivos,
+   «Usar acá», presupuestos de toda la organización, stock por sucursal en el cotizador, costos
+   y lista de precios según permiso, y Monitoreo dentro de Administración.
+5. **Administración:** organizaciones, sucursales, depósitos, agentes del DMS, usuarios con sus
+   roles y el cupo, la carga de la lista de precios y las compatibilidades, y el registro de
+   seguridad.
 6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared` y Caddy,
-   la IP real desde `CF-Connecting-IP`, apagar `/docs`, la alerta de muchos logins fallidos, la
-   auditoría (`created_by`, `accepted_by`), Row Level Security antes del segundo cliente y el
-   aviso de privacidad a los empleados (Ley 25.326). El túnel se prende al final de esta etapa.
+   la IP real desde `CF-Connecting-IP`, apagar `/docs`, la regla de solo Argentina, la alerta de
+   muchos logins fallidos, la auditoría (`created_by`, `accepted_by`), Row Level Security antes
+   del segundo cliente y el aviso de privacidad a los empleados (Ley 25.326). El túnel se prende
+   al final de esta etapa.
 
 ## Decisiones tomadas
 
-1. Existe el rol **administrador de la organización**, aunque al principio los usuarios los
-   cree el administrador de plataforma.
-2. El número de presupuesto es **uno por organización**; el presupuesto dice de qué sucursal es.
+1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
+2. El número de presupuesto es **uno por organización**, y **se ven los presupuestos de toda la
+   organización**, con la sucursal de cada uno.
 3. Un usuario puede trabajar en **varias sucursales**, eligiendo la activa arriba.
 4. En el cotizador se ve el stock de **la sucursal propia, el resto de las sucursales y la
    planta**, y se puede expandir para ver cuánto tiene cada sucursal.
 5. Se entra con **usuario**, no con mail.
 6. **Todos entran por internet a esta PC**, con `oemia.com.ar` en Cloudflare y un Cloudflare
-   Tunnel. El certificado es uno para el dominio, el de Cloudflare.
-7. Se paga por dar de alta **sucursales** y **usuarios**. Los usuarios son de la organización
-   y eligen en qué sucursal trabajan, entre las que tienen habilitadas.
+   Tunnel. El certificado es uno para el dominio, el de Cloudflare. Solo desde Argentina.
+7. **Se cobra por usuario que cotiza.** Los que solo administran no se cobran. Las sucursales
+   las crea solo el administrador de plataforma.
 8. **Cada usuario carga sus cuentas** de EPC, SAP y el localizador; misma cuenta, misma sesión.
-9. El admin de la organización puede cargar las cuentas de un vendedor, sin poder verlas.
-10. **Cada sucursal incluye un usuario**; los demás se pagan aparte.
-11. El **código de concesionario de Nissan** va en cada sucursal y puede repetirse.
+9. Un Administrador puede cargar las cuentas de un usuario de su organización, sin poder verlas.
+10. El **código de concesionario de Nissan** va en cada sucursal y puede repetirse.
+11. **Código de verificación** obligatorio para el administrador de plataforma y opcional para
+    los Administradores.
+12. El dueño del sistema tiene **dos usuarios**: el de plataforma y uno común para cotizar.
+13. **La lista de precios y las compatibilidades de Nissan las carga el administrador de
+    plataforma**, una sola para todos. Cada organización elige su margen y su estrategia.
+14. **Registro de seguridad** de logins, contraseñas, roles, sesiones y cuentas.
+15. **Cada PC queda recordada** (30 días sin uso, 90 como máximo) y el usuario se usa **en un
+    solo lugar a la vez**.
+16. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
 
 ## Abiertas
 
 1. **El nombre público:** `app.oemia.com.ar` u otro.
+2. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
+   la contraseña de nuevo.
+3. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
