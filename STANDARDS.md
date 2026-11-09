@@ -128,14 +128,11 @@ Una vez configurado, se ejecuta automáticamente antes de cada `git commit`.
 
 Toda configuración sensible en `.env`. Nunca hardcodear credenciales.
 
-`.env.example` (este sí va al repo):
-```
-ANTHROPIC_API_KEY=
-EPC_USERNAME=
-EPC_PASSWORD=
-EPC_URL=https://login.superservice.com/login/es-es/
-DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
-```
+`.env.example` va al repo y lista **todas** las variables del backend, agrupadas por tema y con
+su valor por defecto; las claves quedan vacías. El `.env` de cada PC sigue el mismo orden, con
+todas las variables escritas, para que se vea qué usa sin abrir el código.
+`tests/unit/test_config.py` falla si una variable de `Settings` no está en `.env.example` o si
+el valor del ejemplo no coincide con el del código.
 
 Leer con pydantic-settings en `app/core/config.py`:
 ```python
@@ -154,9 +151,12 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
-Lo que se pueda ajustar sin tocar el código (umbrales, límites, retenciones, tiempos) va
-como campo de `Settings`, con su valor por defecto, su explicación en el docstring y su
-línea en `.env.example`.
+Lo que se pueda ajustar sin tocar el código (modelos, umbrales, límites, retenciones, tiempos
+de espera de los servicios externos, direcciones de esos servicios) va como campo de `Settings`,
+con su valor por defecto, su explicación en el docstring y su línea en `.env.example`. Se
+quedan en el código, como constantes con nombre, los detalles de implementación que nadie
+cambiaría al instalar (largos de truncado, intervalos internos, rutas de las APIs de Nissan,
+selectores de las páginas) y los textos de los prompts.
 
 ---
 

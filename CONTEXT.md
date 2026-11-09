@@ -261,7 +261,7 @@ tres pasos; cada uno se puede omitir y lo omitido queda "sin indicar":
 Sin compañía, Aceptado acepta directo, como antes. Al aceptar se habilita la segunda pestaña,
 **Aceptación** (la primera es **Presupuesto**), donde todo se edita y se guarda al momento:
 franquicia (sin indicar / con franquicia y monto / sin franquicia), inspección final (sin indicar /
-sí / no), **orden del seguro** (un PDF de hasta 10 MB; subir otro la reemplaza), **pago de la
+sí / no), **orden del seguro** (un PDF de hasta `MAX_INSURANCE_ORDER_MB`, 10 MB por defecto; subir otro la reemplaza), **pago de la
 compañía** (repuestos, mano de obra y total; el total se calcula solo si están los dos, si no se
 escribe a mano; "Completar con lo del presupuesto" los llena sin los excluidos) y **Excluidos**
 ("Se aceptó el presupuesto completo" si no hay; si no, la lista con **Revertir** y **Agregar
