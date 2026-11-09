@@ -49,7 +49,7 @@ en las tablas actuales como columnas obligatorias desde el principio, sin pasar 
 | `role_permissions` | rol, permiso. Los permisos válidos los define el código (un `CHECK` con la misma lista, como los estados) |
 | `user_roles` | usuario, rol |
 | `user_branches` | usuario, sucursal, si es la de por defecto |
-| `sessions` | una por PC o navegador: usuario, hash del token, creada, último uso, vence, sucursal activa, IP, navegador, revocada |
+| `sessions` | una por PC o navegador: usuario, hash del token de la cookie y del de renovación, si está atada a la PC (DBSC) y su clave pública, creada, último uso, vence, sucursal activa, IP, navegador, revocada |
 | `audit_log` | cuándo, organización, quién, qué hizo, sobre quién o qué, IP, detalle |
 | `integration_accounts` | usuario, servicio (`epc`, `sap`, `localizador`), usuario de la cuenta, contraseña cifrada, huella, estado y último error |
 | `dms_agents` | sucursal, nombre, hash del token, última subida |
@@ -152,17 +152,40 @@ agente del DMS, que usa su propio token.
 - **Código de verificación** de 6 dígitos de una app (Google Authenticator o similar), que se
   pide al loguearse: obligatorio para el administrador de plataforma, opcional para los
   Administradores.
-- **Cada PC queda recordada**, como en Mercado Libre: la sesión vive en una cookie `HttpOnly`,
-  `Secure` y `SameSite=Lax`, con un token opaco cuyo hash se guarda en `sessions`. Vence a los
-  **30 días sin uso** y a los **90 días** como máximo; un vendedor que entra todos los días se
-  loguea cada tres meses. El administrador de plataforma, más corto: 12 horas sin uso y 7 días
-  como máximo. Nada de tokens en `localStorage`, que se pueden robar con un script.
+- **Cada PC queda recordada**, como en Mercado Libre, y la sesión se protege contra el robo
+  de cookies: los virus que las copian del navegador son hoy la forma más común de robar
+  cuentas.
+  - **Cookie corta:** la cookie de la sesión (`__Host-`, `HttpOnly`, `Secure`,
+    `SameSite=Lax`) dura 10 minutos y se renueva sola. Nada de tokens en `localStorage`, y la
+    base guarda solo hashes de los tokens.
+  - **Atada a la PC (DBSC)** en Chrome sobre Windows con TPM (desde Chrome 146): al loguearse,
+    el navegador crea una clave en el chip de seguridad que no se puede copiar, y cada
+    renovación va firmada con ella. Una cookie robada sirve como mucho 10 minutos y no se
+    renueva desde otra máquina.
+  - **Sin DBSC** (Firefox, Safari, celulares y PCs sin TPM): la renovación usa un token que
+    cambia cada vez. Si aparece uno ya usado, hay dos con la misma sesión: se cierra para los
+    dos, queda en el registro de seguridad y se avisa en Monitoreo. Mientras el dueño la usa,
+    un robo se detecta en minutos; si el dueño no la usa, el ladrón sigue hasta que vuelva.
+  - **Duración:** atadas a la PC, 30 días sin uso y 90 como máximo. Sin DBSC, 7 días sin uso y
+    30 como máximo. El administrador de plataforma, 12 horas sin uso y 7 días como máximo.
+  - Cada sesión guarda si quedó atada, sin mirar el nombre del navegador, y Mis dispositivos
+    lo muestra («Protegida» o «Sin protección»).
+- **Lo sensible pide la contraseña de nuevo** (vale 10 minutos): cambiar la contraseña o el
+  código de verificación, cargar cuentas de EPC, SAP o el localizador, crear usuarios, cambiar
+  roles o cerrar sesiones de otros, generar tokens del DMS y todo lo de plataforma. Con una
+  sesión robada no se puede dejar afuera al dueño ni darse permisos.
+- **Aviso de ingreso nuevo:** «Nuevo ingreso desde Chrome en Windows, IP …: ¿fuiste vos?», con
+  un botón para cerrar esa sesión.
+- **Lo que no se evita:** si el virus sigue en la PC, puede usar el navegador ahí mismo o
+  capturar la contraseña al escribirla. Ayudan Windows Defender prendido, vendedores sin
+  permisos de administrador en la PC y Chrome al día. Una PC infectada se limpia, se cierran
+  las sesiones del usuario y se cambia la contraseña.
 - **Un solo lugar a la vez.** El usuario tiene una sola sesión en uso (`users.active_session_id`).
   Al entrar desde otra PC, la anterior deja de andar y muestra «Tu usuario se abrió en otra
   PC»; el front se entera en su próximo pedido o en menos de 30 segundos. Si vuelve a la
   primera PC, toca **Usar acá** y la retoma sin escribir la contraseña, porque esa PC sigue
   recordada; la otra queda afuera. Varias pestañas del mismo navegador son la misma sesión.
-  Si alguien le roba la sesión a un usuario, el usuario lo nota porque lo sacan.
+  Si alguien entra con la contraseña de otro, el dueño lo nota porque lo sacan.
 - **Mis dispositivos**, en Mi cuenta: cada PC recordada con navegador, IP y último uso, y un
   botón para cerrarla. Un Administrador puede cerrar todas las de un usuario de su
   organización.
@@ -354,7 +377,9 @@ consola. Se trabajan en una rama de integración, con un commit y sus tests por 
 revisarlas de a una.
 
 1. **Login en el backend:** usuarios, roles combinables, permisos, sesiones por PC con un solo
-   lugar a la vez, el código de verificación, `/auth/login`, `/auth/logout`, `/auth/me`, cambio
+   lugar a la vez, la protección contra el robo de sesión (DBSC, la renovación que detecta
+   reusos, la contraseña para lo sensible y el aviso de ingreso nuevo), el código de
+   verificación, `/auth/login`, `/auth/logout`, `/auth/me`, cambio
    de contraseña, el registro de seguridad, el comando `crear-admin`, la dependencia de
    permisos en cada ruta y `bind_user`.
 2. **Organizaciones, sucursales y depósitos:** las tablas, la organización y la sucursal en las
@@ -397,9 +422,11 @@ revisarlas de a una.
 13. **La lista de precios y las compatibilidades de Nissan las carga el administrador de
     plataforma**, una sola para todos. Cada organización elige su margen y su estrategia.
 14. **Registro de seguridad** de logins, contraseñas, roles, sesiones y cuentas.
-15. **Cada PC queda recordada** (30 días sin uso, 90 como máximo) y el usuario se usa **en un
-    solo lugar a la vez**.
-16. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
+15. **Cada PC queda recordada** y el usuario se usa **en un solo lugar a la vez**.
+16. **Protección contra el robo de sesión:** sesión atada a la PC (DBSC) en Chrome sobre
+    Windows; en los demás navegadores, renovación que detecta reusos y sesiones más cortas.
+    Lo sensible pide la contraseña de nuevo.
+17. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
 
 ## Abiertas
 
@@ -407,3 +434,5 @@ revisarlas de a una.
 2. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
    la contraseña de nuevo.
 3. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
+4. **El usuario de plataforma solo entra con la sesión atada a la PC** (Chrome en Windows), y
+   los demás usuarios pueden usar cualquier navegador (propuesto).
