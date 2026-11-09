@@ -125,7 +125,8 @@ uv run python -m app.cli generar-clave
 ```
 
 El administrador de plataforma se crea solo desde la consola de la PC del servidor. Pide
-la contraseña ahí mismo y configura el código de verificación con el celular:
+nombre, apellido, mail (opcional), sugiere el usuario (`f.antelo`), pide la contraseña ahí
+mismo y configura el código de verificación con el celular:
 
 ```bash
 uv run python -m app.cli crear-admin

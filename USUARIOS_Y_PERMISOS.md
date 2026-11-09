@@ -436,15 +436,15 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
 ## Acceso desde internet
 
 Todos los usuarios, de cualquier sucursal y organización, entran a **esta PC por internet**, en
-`app.oemia.com.ar` (confirmado el 9 de noviembre de 2026), así `oemia.com.ar` queda libre para
-una web.
+`app.oemia.ar` (confirmado el 9 de noviembre de 2026), así `oemia.ar` queda libre para una
+web. `oemia.com.ar` también es del usuario y redirige a `oemia.ar` (decisión 28).
 
 - **Cloudflare Tunnel, sin abrir puertos.** El programa `cloudflared` corre como servicio de
   Windows y abre una conexión de salida hacia Cloudflare. Los usuarios entran a Cloudflare, y
   Cloudflare les pasa los pedidos a esta PC por esa conexión. En el router no se abre nada, la
   IP de la oficina no queda a la vista y anda aunque el proveedor cambie la IP. Para eso el DNS
-  de `oemia.com.ar` pasa a Cloudflare (cuenta gratis, cambiando los servidores de DNS en NIC
-  Argentina).
+  de los dominios pasa a Cloudflare (cuenta gratis, cambiando los servidores de DNS en NIC
+  Argentina): hecho el 9 de noviembre con `oemia.ar` y `oemia.com.ar`.
 - **El certificado es uno para el dominio y lo pone Cloudflare**, gratis y renovado solo. De
   Cloudflare a esta PC el túnel ya va cifrado.
 - **El backend entrega también el front**, sin Caddy: la carpeta `dist` que arma
@@ -520,9 +520,10 @@ revisarlas de a una.
       desplazada pida ingresar de nuevo (decisión 21).
    3. La [seguridad en Postgres](#seguridad-en-postgres): un usuario para cada cosa, el
       registro que no se puede borrar y Row Level Security.
-   4. Lo que hace el usuario: Cloudflare y el DNS, `cloudflared`, Postgres solo local, los
-      usuarios y la base de productivo (`scripts/preparar_postgres.py productivo`), el backend
-      al prender la PC, la PC como servidor y cargar la base.
+   4. Lo que hace el usuario: la redirección de `oemia.com.ar` (los dos dominios ya están en
+      Cloudflare), `cloudflared`, Postgres solo local, los usuarios y la base de productivo
+      (`scripts/preparar_postgres.py productivo`), el backend al prender la PC, la PC como
+      servidor y cargar la base.
    5. Pruebas por internet (DBSC, Cotizar sin error 524, el agente del DMS) y prender el túnel.
 
    El aviso de privacidad a los empleados salió de esta etapa (ver [Pendientes](#pendientes)).
@@ -795,6 +796,31 @@ En la rama `feat/publicar` de los tres repositorios.
   cuentas, crear y borrar una aseguradora) y plataforma (organizaciones, registro, salud y
   Monitoreo), sin errores en el log.
 
+**Datos de cada usuario (hecho, antes del bloque 4; decisión 29):**
+
+- **Nombre(s), apellido(s) y mail opcional** (migración 0008). El nombre para mostrar sale de
+  los dos («Facundo Martín Antelo Curto»). A los usuarios que ya existían se les partió el
+  nombre en la última palabra.
+- **El mail es único** sin importar mayúsculas (otra cuenta con el mismo: 409 «El mail … ya lo
+  usa otra cuenta»). **Se entra con el usuario o con el mail.** Sin mail, la contraseña la
+  restablece solo un Administrador.
+- **El usuario lleva solo letras y puntos** (`f.antelo`), entre 3 y 60, y no cambia nunca.
+- **Usuario sugerido** (`GET /administracion/usuarios/sugerencia`, `app/services/usernames.py`):
+  el más corto libre de `f.antelo`, `fm.antelo` y, con dos apellidos, `f.anteloc` y
+  `fm.anteloc`. Sin acentos ni símbolos («Ñañez» da `n.nanez`) y con las partículas pegadas
+  («De la Fuente» da `delafuente`). Si están todos usados no sugiere nada y el Administrador
+  escribe uno. El alta lo completa solo mientras se escriben el nombre y el apellido, y no
+  lo pisa si el Administrador escribió otro.
+- **Los repetidos se buscan en todas las organizaciones** con la función de Postgres
+  `app.taken_usernames()`, que corre como el dueño de las tablas y contesta solo cuáles de
+  los nombres pedidos están usados: así no hace falta la conexión de sistema.
+- `crear-admin` pide nombre(s), apellido(s), mail y sugiere el usuario. El seed de prueba
+  les puso nombre y apellido a sus usuarios.
+- Despedir a alguien ya andaba así: «Desactivar» le cierra las sesiones al instante y libera
+  el lugar del cupo; su usuario queda reservado y su historia, en el registro.
+- Probado en el navegador: el alta con la sugerencia, el mail repetido, la edición y entrar
+  con el mail.
+
 ## Decisiones tomadas
 
 1. **Roles combinables:** Cotizador, Encargado y Administrador; los permisos se suman.
@@ -803,8 +829,8 @@ En la rama `feat/publicar` de los tres repositorios.
 3. Un usuario puede trabajar en **varias sucursales**, eligiendo la activa arriba.
 4. En el cotizador se ve el stock de **la sucursal propia, el resto de las sucursales y la
    planta**, y se puede expandir para ver cuánto tiene cada sucursal.
-5. Se entra con **usuario**, no con mail.
-6. **Todos entran por internet a esta PC**, con `oemia.com.ar` en Cloudflare y un Cloudflare
+5. Se entra con **usuario** o con el **mail**, si lo tiene (decisión 29).
+6. **Todos entran por internet a esta PC**, con `oemia.ar` en Cloudflare y un Cloudflare
    Tunnel. El certificado es uno para el dominio, el de Cloudflare. Solo desde Argentina.
 7. **Se cobra por usuario que cotiza.** Los que solo administran no se cobran. Las sucursales
    las crea solo el administrador de plataforma.
@@ -822,7 +848,8 @@ En la rama `feat/publicar` de los tres repositorios.
     Windows; en los demás navegadores, renovación que detecta reusos y sesiones más cortas.
     Lo sensible pide la contraseña de nuevo.
 17. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
-18. **El nombre público es `app.oemia.com.ar`.**
+18. **El nombre público es `app.oemia.ar`** (era `app.oemia.com.ar`; cambió el 9 de
+    noviembre, ver la decisión 28).
 19. **El usuario de plataforma entra desde cualquier navegador**, con contraseña y el código de
     verificación de la app del celular (obligatorio). No se le exige la sesión atada a la PC.
 20. **Postgres se refuerza antes de publicar, con Row Level Security incluido** (no se espera al
@@ -851,6 +878,14 @@ En la rama `feat/publicar` de los tres repositorios.
     tres usuarios del backend conectándose; `cotizador_dev` queda para desarrollo. Los
     usuarios de desarrollo son otros (`cotizador_dev_app` y `cotizador_dev_sistema`): no
     pueden entrar a la base de productivo aunque estén en el mismo Postgres.
+28. **El dominio es `oemia.ar`, más corto.** `oemia.com.ar` también es del usuario: los dos
+    están en Cloudflare (plan gratis) y `oemia.com.ar` redirige a `oemia.ar` con la misma
+    ruta (ver [PRODUCCION.md](PRODUCCION.md#cloudflare)).
+29. **Cada usuario tiene nombre(s), apellido(s) y mail opcional, y el usuario se arma solo:**
+    `f.antelo`, si está usado `fm.antelo`, y con dos apellidos `f.anteloc` y `fm.anteloc`.
+    Solo letras y puntos (sin números ni espacios), lo más corto posible, y el Administrador
+    puede escribir otro con las mismas reglas. El mail es único; sin mail, la contraseña la
+    restablece solo un Administrador.
 
 ## Abiertas
 
@@ -865,7 +900,8 @@ Lo que se decidió dejar para después de la etapa 6:
    nombre, IP, dispositivo, ingresos, cotizaciones, registro de seguridad), para qué, cuánto
    tiempo, quién es el responsable y cómo pedir acceso, corrección o borrado. Espera a que se
    defina el responsable (decisión 22). Conviene que lo revise un abogado.
-2. **Restablecer la contraseña por mail** y **las alertas por mail** (decisión 23).
+2. **Restablecer la contraseña por mail** y **las alertas por mail** (decisión 23). Solo
+   para quien tiene mail; los demás, por un Administrador (decisión 29).
 3. **La publicación automática de noche** y la deploy key de solo lectura (decisión 25).
 4. **Los tests en GitHub Actions** como condición para publicar (decisión 25).
 5. **Pasar productivo a la PC dedicada** después de la primera prueba (decisión 24).
