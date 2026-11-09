@@ -4,20 +4,34 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 
 ## Endpoints disponibles
 
+Todas piden login salvo las marcadas como públicas; cada una exige su permiso (ver
+[USUARIOS_Y_PERMISOS.md](USUARIOS_Y_PERMISOS.md)). Las escrituras llevan el header
+`X-OEMIA: 1` del front.
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
+| POST | `/auth/login` | Pública. Usuario, contraseña y código de verificación → sesión en esta PC |
+| POST | `/auth/salir` | Cerrar la sesión y olvidar esta PC |
+| GET | `/auth/me` | Usuario, organización, sucursales, permisos y si otra PC tomó el usuario |
+| POST | `/auth/renovar` | Pública. Renueva la cookie de la sesión en navegadores sin DBSC |
+| POST | `/auth/dbsc/registro` · `/auth/dbsc/renovar` | Públicas. Las llama Chrome solo para atar la sesión a la PC |
+| POST | `/auth/usar-aca` | Retomar el usuario en esta PC (la otra queda afuera) |
+| POST | `/auth/confirmar-contrasena` | Volver a escribir la contraseña antes de algo sensible |
+| PUT | `/auth/contrasena` | Cambiar la contraseña (cierra las demás PCs) |
+| POST / DELETE | `/auth/codigo-verificacion` | Configurar o quitar el código de verificación (`/activar` lo activa) |
+| GET / DELETE | `/auth/sesiones` | Mis dispositivos: las PCs recordadas y cerrar una |
 | POST | `/match` | Texto libre → repuestos identificados + familias |
 | POST | `/epc` | Chasis + familias → números de pieza completos |
 | POST | `/cotizar` | **Endpoint principal:** texto libre + chasis → números de pieza |
-| PUT | `/dms/stock` | El agente del taller sube la foto completa del stock (con token) |
-| POST | `/dms/stock` | Números de pieza → stock del taller por depósito |
-| GET | `/dms/stock/estado` | Cuándo llegó la última foto del stock del taller |
+| PUT | `/dms/stock` | Pública. El agente de una sucursal sube la foto completa de su stock (con su token) |
+| POST | `/dms/stock` | Números de pieza → stock de la sucursal activa, de las demás y de cada una |
+| GET | `/dms/stock/estado` | Cuándo llegó la última foto del stock de la sucursal activa |
 | GET | `/presupuestos/siguiente-numero` | Número que le toca al próximo presupuesto |
-| GET | `/presupuestos` | Presupuestos guardados (`buscar` por número, cliente, teléfono, vehículo, patente o VIN) |
+| GET | `/presupuestos` | Presupuestos de toda la organización (`buscar` por número, cliente, teléfono, vehículo, patente o VIN; `sucursal` filtra) |
 | GET | `/presupuestos/{numero}` | Un presupuesto guardado, con sus renglones |
 | POST | `/presupuestos` | Guardar un presupuesto nuevo (sin número toma el siguiente; 409 si el número existe) |
 | PUT | `/presupuestos/{numero}` | Actualizar un presupuesto guardado |
-| GET / PUT | `/presupuestos/concesionario` | Datos y logo del concesionario que encabezan los presupuestos |
+| GET / PUT | `/presupuestos/concesionario` | Datos de la organización y de la sucursal que encabezan los presupuestos (el PUT cambia los de la sucursal) |
 | GET / POST | `/aseguradoras` | Compañías de seguro para el presupuesto (agregar no repite mayúsculas) |
 | POST | `/presupuestos/{numero}/aceptado` | Aceptar el presupuesto guardado para habilitar pedidos, con las respuestas del cuestionario del seguro |
 | GET / PUT | `/presupuestos/{numero}/aceptacion` | Franquicia, inspección final, pago del seguro y excluidos |
@@ -34,8 +48,8 @@ Dado un texto libre del cliente (jerga argentina, abreviaturas, etc.), identific
 | GET | `/prestamos` | Resumen y registros de préstamos de repuestos |
 | POST | `/prestamos` | Crear un préstamo o pedido; cada número de pieza se guarda como una fila |
 | PATCH | `/prestamos/{id}` | Actualizar el estado y la fecha de fin de un registro |
-| GET | `/salud` · `/salud/detalle` | Salud del sistema (el detalle, solo desde la PC del servidor) |
-| GET | `/monitoreo/*` | Pantalla Monitoreo y rastreo de un código de error (ver OBSERVABILIDAD.md) |
+| GET | `/salud` · `/salud/detalle` | Salud del sistema (`/salud` es pública; el detalle, con `monitoreo.ver`) |
+| GET | `/monitoreo/*` | Pantalla Monitoreo y rastreo de un código de error, con `monitoreo.ver` (ver OBSERVABILIDAD.md) |
 | POST | `/telemetria` | Mediciones del navegador (Web Vitals, errores, tiempos) |
 
 Ver documentación interactiva en http://localhost:8000/docs
@@ -73,8 +87,7 @@ copy .env.example .env
 **Variables en `.env`:**
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-EPC_USERNAME=tu@email.com
-EPC_PASSWORD=...
+CREDENTIALS_KEY=...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false
@@ -94,10 +107,24 @@ Grafana corre en Docker y queda siempre prendido: se levanta una vez con
 `docker compose up -d` y después vuelve solo con Docker Desktop. Ver
 [OBSERVABILIDAD.md](OBSERVABILIDAD.md#14-trazas-con-opentelemetry-opcional).
 
+`CREDENTIALS_KEY` cifra los secretos de la base (los códigos de verificación y las cuentas
+de EPC, SAP y el localizador). Se genera una por PC y no se comparte:
+
 ```bash
-# Levantar servidor (al arrancar crea o actualiza las tablas)
+uv run python -m app.cli generar-clave
+```
+
+El administrador de plataforma se crea solo desde la consola de la PC del servidor. Pide
+la contraseña ahí mismo y configura el código de verificación con el celular:
+
+```bash
+uv run python -m app.cli crear-admin
+```
+
+```bash
+# Levantar servidor (al arrancar crea o actualiza las tablas). La API queda bajo /api.
 uv run uvicorn main:app --reload
-# → http://localhost:8000
+# → http://localhost:8000/api/salud
 ```
 
 ### 2. Frontend

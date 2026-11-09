@@ -259,9 +259,10 @@ y **3 s** con SSO silencioso.
 | `X-Uaa-Csrf`, `__Host-JSESSIONID`, `__VCAP_ID__` | XSUAA | 24 h / sesión | Flujo OAuth |
 
 "Sesión" quiere decir que el navegador la borraría al cerrarse, pero el servidor la sigue
-aceptando mientras no venza. El backend las guarda en `SAP_SESSION_FILE`
-(`~/.cotizador/sap_session.json`, formato `storage_state` de Playwright). **Ese archivo da
-acceso a SAP mientras las sesiones estén vivas: no compartirlo ni subirlo al repo.**
+aceptando mientras no venza. El backend las guarda cifradas en la base
+(`integration_sessions`, con CREDENTIALS_KEY), una por cuenta: dos usuarios con la misma
+cuenta comparten la sesión. **Dan acceso a SAP mientras las sesiones estén vivas: por eso
+van cifradas y un respaldo de la base sin el `.env` no las deja usar.**
 
 ### Validar o mantener viva la sesión (medido)
 
@@ -344,9 +345,10 @@ SUM(CASE WHEN Tipo = 'I' THEN Cantidad WHEN Tipo = 'E' THEN -Cantidad ELSE 0 END
 - Depósitos: CENTRAL, RACK, DEPOSITO 3, PAJARERA, PICKING y GARANTIAS (vacío hoy). PICKING y
   GARANTIAS no suman al stock que se muestra por decisión del taller, pero se guardan igual: el
   vendedor los puede sumar desde la pantalla. Las columnas de `Depositos` (`Garantia`, `Activo`,
-  `Principal`) no los distinguen. MINOZZI no entra al sistema, por pedido del taller: el
-  backend lo descarta al recibir la foto (`DMS_IGNORED_DEPOSITS`). Hoy no está en `Depositos`
-  ni tiene stock; solo aparece en `UbicacionesRepuestos`.
+  `Principal`) no los distinguen: se marcan en Administración, en cada depósito de la
+  sucursal («no suma»). MINOZZI no entra al sistema, por pedido del taller: se marca como
+  ignorado y el backend lo descarta al recibir la foto. Hoy no está en `Depositos` ni tiene
+  stock; solo aparece en `UbicacionesRepuestos`.
 - Ubicación dentro del depósito: sale de `UbicacionesRepuestos` (`Repuesto`, `Deposito`, `Ubicacion`),
   una fila por repuesto y depósito (ej. `1520865F0E`: CENTRAL `D1B2H4A`, RACK `AA4`). El agente la une
   con un LEFT JOIN y la manda como `ubicacion`; si no hay, queda vacía. El login `cotizador_ro`
@@ -486,17 +488,27 @@ Por eso el backend agrupa y mide distancias con su propia tabla de sucursales
 
 ### `app/services/dms_stock.py`
 
-- Guarda la última foto en la base (`dms_stock`, por código normalizado —sin guiones ni
-  espacios, en mayúsculas— y depósito) y registra cada subida en `dms_stock_uploads`. Cada
-  consulta lee la base, sin copia en memoria: así funciona igual con varias instancias del backend.
-- Al recibir una foto descarta las existencias nulas o negativas y los depósitos de
-  `DMS_IGNORED_DEPOSITS` (también del padrón), y suma los depósitos repetidos de un mismo código
-  (se queda con la primera ubicación conocida). Guarda los demás depósitos: los de
-  `DMS_EXCLUDED_DEPOSITS` se marcan al responder (`incluido_por_defecto: false`) y no suman a
-  `disponible`.
-- La antigüedad se mide con el reloj del backend al recibir la foto, no con el del servidor del taller.
-- El router (`app/routers/dms.py`) exige `Authorization: Bearer <DMS_AGENT_TOKEN>` sólo en la
-  subida; sin token configurado la subida responde 503.
+- Cada sucursal tiene su agente (`dms_agents`), con su token: se genera en Administración o
+  con `uv run python -m app.cli crear-agente-dms`, se muestra una sola vez y la base guarda
+  solo su hash. El token dice de qué sucursal es la foto.
+- Guarda la última foto de cada sucursal en la base (`dms_stock`, por depósito y código
+  normalizado —sin guiones ni espacios, en mayúsculas—) y registra cada subida en
+  `dms_stock_uploads`, con la sucursal y el agente. Cada consulta lee la base, sin copia en
+  memoria: así funciona igual con varias instancias del backend.
+- Los depósitos son de cada sucursal (`deposits`): uno que aparece por primera vez, en la foto o
+  en el padrón, se crea solo y suma por defecto. Desde Administración se marca que no sume
+  (`counts_by_default`, como GARANTIAS y PICKING) o que se ignore (`ignored`, como MINOZZI: no se
+  guarda y su stock se borra).
+- Al recibir una foto descarta las existencias nulas o negativas y las de depósitos ignorados, y
+  suma los depósitos repetidos de un mismo código (se queda con la primera ubicación conocida).
+- La consulta devuelve lo de la sucursal activa (`disponible`, `depositos`), la suma de las
+  demás sucursales de la organización (`otras_sucursales`) y el detalle de cada una
+  (`sucursales`). El stock de otra organización nunca se ve.
+- La antigüedad se mide por sucursal, con el reloj del backend al recibir la foto: si se apaga
+  el servidor de una, solo esa queda desactualizada (en el cotizador, en Monitoreo, en la salud
+  y en la alerta, que se dispara una vez por sucursal).
+- El router (`app/routers/dms.py`) exige `Authorization: Bearer <token del agente>` sólo en la
+  subida; un token que no es de ningún agente vigente responde 401.
 
 ### `app/services/part_locator.py`
 
@@ -506,10 +518,11 @@ Por eso el backend agrupa y mide distancias con su propia tabla de sucursales
 - Un rechazo de credenciales frena los reintentos hasta reiniciar con credenciales nuevas;
   Simetrical caído → 60 s sin reintentar (igual que SAP).
 - `group_by_province()`: suma los depósitos de cada sucursal, la ubica con `locator_branches.py`
-  y mide la distancia en línea recta desde `LOCALIZADOR_ORIGEN_LAT/LON`. Orden: CABA, Provincia
-  de Buenos Aires y después el resto de las provincias según su sucursal más cercana; adentro
-  de cada una, de la más cercana a la más lejana. Marca como `propio` la sucursal con
-  `ClientIDAlpha` igual a `SAP_DEALER_CODE`.
+  y mide la distancia en línea recta desde la ubicación de la sucursal activa (latitud y
+  longitud de `branches`; sin ubicación, no hay distancias). Orden: CABA, Provincia de Buenos
+  Aires y después el resto de las provincias según su sucursal más cercana; adentro de cada una,
+  de la más cercana a la más lejana. Marca como `propio` las sucursales cuyo `ClientIDAlpha` es
+  el código de concesionario de alguna sucursal de la organización.
 - Una sucursal que no está en la tabla se ubica con la provincia y las coordenadas del sitio
   (o queda al final de su provincia, sin distancia) y se avisa **una vez** en el log:
   `Localizador: sucursales sin ubicar en locator_branches.py: …`.
@@ -537,18 +550,22 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 
 ### Configuración (`.env`)
 
+Las cuentas de EPC, SAP y Simetrical son de cada usuario: las carga en Mi cuenta y se
+guardan cifradas en la base (`integration_accounts`). Cada servicio tiene una sesión por
+cuenta (`app/core/integrations.py`): dos usuarios con la misma cuenta comparten una sola.
+Sin cuenta cargada, esa parte del cotizador avisa «Cargá tu cuenta de … en Mi cuenta».
+
+El código de concesionario de Nissan (para SAP y el localizador), la ubicación desde la que
+el localizador mide las distancias, los depósitos que no suman o se ignoran y el token del
+agente del DMS son de cada sucursal: se cargan en Administración, no en el `.env`.
+
 | Variable | Default | Uso |
 |---|---|---|
-| `SAP_SESSION_FILE` | `~/.cotizador/sap_session.json` | Cookies de SAP entre reinicios |
 | `SESSION_KEEPALIVE_HOURS` | `3` | Horas sin uso tras las que se liberan EPC y SAP |
 | `WARMUP_ON_START` | `true` | Abrir ambas sesiones al arrancar el backend |
-| `DMS_AGENT_TOKEN` | vacío | Token del agente del taller; vacío deshabilita la subida |
 | `DATABASE_URL` | (obligatoria) | Base Postgres donde se guarda la foto del stock del taller |
-| `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto está desactualizada |
-| `DMS_EXCLUDED_DEPOSITS` | `GARANTIAS,PICKING` | Depósitos que no suman al stock que se muestra por defecto (separados por coma) |
-| `DMS_IGNORED_DEPOSITS` | `MINOZZI` | Depósitos que no entran al sistema: no se guardan ni se muestran (separados por coma) |
-| `SIMETRICAL_USERNAME` / `SIMETRICAL_PASSWORD` | vacío | Cuenta de Simetrical para el localizador de partes; vacío lo deshabilita (503) |
-| `LOCALIZADOR_ORIGEN_LAT` / `LOCALIZADOR_ORIGEN_LON` | `-34.6193` / `-58.4788` | Desde dónde se miden las distancias del localizador (Antelo, Helguera 1150) |
+| `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto de una sucursal está desactualizada |
+| `EPC_MAX_SESSIONS` | `4` | Sesiones del EPC abiertas a la vez (una por cuenta distinta, cada una un navegador); al llegar se cierra la de más tiempo sin uso |
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 
