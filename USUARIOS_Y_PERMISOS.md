@@ -828,10 +828,31 @@ En la rama `feat/publicar` de los tres repositorios.
   `https://oemia.ar/prueba?x=1`).
 - **Postgres solo en esta PC** (hecho el 9 de noviembre): `listen_addresses = 'localhost'`
   (escucha solo en `127.0.0.1` y `::1`), `pg_hba.conf` solo con esas dos direcciones y
-  `scram-sha-256`, y contraseña nueva de `postgres`. Falta prender `log_connections`.
+  `scram-sha-256`, `log_connections = on` y contraseña nueva de `postgres`.
 - La etapa 6 hasta acá se mergeó a `main` para armar la carpeta de productivo desde ahí.
-- Sigue: la carpeta de productivo, los usuarios y la base `cotizador`, `crear-admin`,
-  `cloudflared`, el backend al prender la PC, la PC como servidor y cargar la base.
+- **Carpeta de productivo `C:\OEMIA`** (armada el 9 de noviembre): el backend y el front
+  clonados de `main`, el front compilado y el `.env` con `ENVIRONMENT=produccion`, CORS
+  `https://app.oemia.ar` y una `CREDENTIALS_KEY` nueva (la base es nueva, así que cada
+  usuario carga sus cuentas otra vez). El usuario pegó la clave de la IA, corrió `uv sync` y
+  cerró la carpeta con `icacls` (solo su usuario, SYSTEM y Administradores).
+- **Usuarios y base de productivo** (9 de noviembre, `preparar_postgres.py productivo`):
+  `cotizador_owner` dueño de la base `cotizador`, `cotizador_app` y `cotizador_sistema`
+  (solo este se saltea RLS) con 60 segundos y 30 conexiones, y la base cerrada a los demás.
+- **Primer arranque** (9 de noviembre, `scripts\produccion.ps1`): «Configuración de
+  productivo revisada: todo en orden», migraciones 0001 a 0008, 34 tablas en `app` (23 con
+  RLS), todas del dueño; la app solo agrega y lee `audit_log` y sin organización no ve
+  usuarios. `/api/salud` con HSTS, `nosniff`, `DENY` y `no-store`; `/docs` muestra la app
+  y `/openapi.json` da 404. Sin avisos en el log.
+- **Administrador de plataforma** creado con `crear-admin` (9 de noviembre), con código de
+  verificación y mail.
+- **Túnel `app.oemia.ar`** (9 de noviembre): `cloudflared` como servicio, solo Argentina,
+  TLS 1.2 como mínimo; probado por internet con los headers, `/docs` cerrado y la IP pública
+  real en Monitoreo (detalle en [PRODUCCION.md](PRODUCCION.md#cloudflare)).
+- **El backend al prender la PC** (9 de noviembre): tarea programada «OEMIA backend
+  productivo» con el usuario dueño de `C:\OEMIA`, sin administrador ni contraseña guardada,
+  sin límite de tiempo y revisando cada minuto que siga corriendo (detalle en
+  [PRODUCCION.md](PRODUCCION.md#la-tarea-programada)).
+- Sigue: la PC como servidor y cargar la base.
 
 ## Decisiones tomadas
 
