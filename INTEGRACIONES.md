@@ -519,7 +519,8 @@ Por eso el backend agrupa y mide distancias con su propia tabla de sucursales
   Simetrical caído → 60 s sin reintentar (igual que SAP).
 - `group_by_province()`: suma los depósitos de cada sucursal, la ubica con `locator_branches.py`
   y mide la distancia en línea recta desde la ubicación de la sucursal activa (latitud y
-  longitud de `branches`; sin ubicación, no hay distancias). Orden: CABA, Provincia de Buenos
+  longitud de `branches`; sin ubicación, no hay distancias). Desde el 10 de noviembre de 2026
+  la ubicación no se carga en Administración: la conservan las sucursales que ya la tenían. Orden: CABA, Provincia de Buenos
   Aires y después el resto de las provincias según su sucursal más cercana; adentro de cada una,
   de la más cercana a la más lejana. Marca como `propio` las sucursales cuyo `ClientIDAlpha` es
   el código de concesionario de alguna sucursal de la organización.

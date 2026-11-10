@@ -96,6 +96,7 @@ tener presente. El resto queda como en `.env.example`.
 | `LOG_LEVEL` | `INFO` | `DEBUG` llena el disco y muestra más de lo necesario. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Las trazas van al Grafana de esta PC (`docker-compose.yml`). |
 | `LLM_DAILY_BUDGET_USD` | `1` (el de `.env.example`) | Tope diario de la IA en dólares. Revisarlo cuando haya varios concesionarios cotizando. |
+| `VEHICLE_PARTS_DAYS` | Sin poner (180) | Días que se recuerdan los números cotizados de cada chasis desde la última consulta. |
 
 ## Lo que hace el backend por su cuenta
 
@@ -348,6 +349,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-10 | Repuestos consultados por chasis y la revisión de las candidatas del catálogo: la migración 0009 corre sola al arrancar. |
 | 2026-11-10 | Arreglo de Precios con la matriz de reemplazos cargada y el front llamando a la API solo con el cliente tipado (`npm run check:api`); cómo publicar a mano. |
 | 2026-11-09 | Tarea programada «OEMIA backend productivo»: arranca al prender la PC y lo vuelve a levantar si se cae. |
 | 2026-11-09 | Túnel de Cloudflare `app.oemia.ar` → `127.0.0.1:8000` desde la PC de desarrollo, solo Argentina, TLS 1.2 como mínimo. |
