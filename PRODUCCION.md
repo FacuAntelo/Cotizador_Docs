@@ -282,7 +282,8 @@ administrador). En Docker corre solo Grafana, que no usa Postgres.
 
 **Dominios** (plan gratis): `oemia.ar` es el de la app (`app.oemia.ar`) y `oemia.com.ar`
 redirige a `oemia.ar`. Los dos están delegados a Cloudflare desde NIC Argentina (hecho el 9
-de noviembre de 2026).
+de noviembre de 2026). Hasta que haya una web en `oemia.ar`, `oemia.ar` y `www.oemia.ar`
+llevan a la app.
 
 **Redirección de `oemia.com.ar`** (hecha el 9 de noviembre de 2026), en la zona `oemia.com.ar`:
 
@@ -300,6 +301,57 @@ de noviembre de 2026).
 4. Probar: `https://oemia.com.ar/prueba?x=1` y `http://www.oemia.com.ar/prueba?x=1` tienen que
    terminar en `https://oemia.ar/prueba?x=1`. Mientras `oemia.ar` no tenga una web, ahí se ve
    un error de Cloudflare: es lo esperado.
+
+**Redirección de `oemia.ar` a la app** (temporal, hasta que haya una web), en la zona
+`oemia.ar`:
+
+1. **DNS → Registros:** un registro `A` para `@` y otro para `www`, los dos con la IP
+   `192.0.2.1` y **con proxy**, como en `oemia.com.ar`. El de `app` (el del túnel) no se toca.
+2. **Reglas → Crear regla → Regla de redirección**, llamada «oemia.ar a la app (temporal)»:
+   - Si coincide: **Expresión de filtro personalizada**, **Nombre de host** **está en**
+     `oemia.ar` y `www.oemia.ar` (`(http.host in {"oemia.ar" "www.oemia.ar"})`). **No** «Todas
+     las solicitudes entrantes»: entraría `app.oemia.ar` y la app se redirigiría a sí misma
+     sin fin.
+   - Entonces: **Estático**, `https://app.oemia.ar/`, código **302**, sin conservar la cadena
+     de consulta. Es 302 y no 301 porque el 301 el navegador lo recuerda para siempre: cuando
+     esté la web, quien ya entró seguiría yendo a la app.
+3. Probar: `https://oemia.ar`, `http://www.oemia.ar` y `https://oemia.com.ar` tienen que
+   terminar en `https://app.oemia.ar/`.
+
+Cuando esté la web, se borra la regla y los registros `A` de `@` y `www` pasan a apuntar a
+ella.
+
+**Página de mantenimiento** (Worker `oemia-mantenimiento`, código en
+`Cotizador_FE/cloudflare/mantenimiento/`). Si alguien abre la app y el servidor no contesta
+(PC apagada o túnel caído: error 1033; backend caído o reiniciándose: 502), en vez del error
+de Cloudflare ve la página de OEMIA con la imagen, que se fija cada 20 segundos y abre la app
+sola cuando vuelve. El plan gratis no deja cambiar las páginas de error de Cloudflare: lo
+hace un Worker delante de `app.oemia.ar`.
+
+- Solo cambia las páginas que se abren, y solo si Cloudflare o el túnel dicen que no llegaron
+  al backend (502, 503, 504, 520 a 524 y 530). Con el servidor andando no aparece: un 500 del
+  backend es un error del código y pasa tal cual.
+- Lo demás pasa tal cual y la API no pasa por el Worker (ruta sin Worker): Cotizar, el agente
+  del DMS y los límites por IP no se enteran. Con la app ya abierta, si el backend se cae, los
+  pedidos a la API dan error en la app; la página aparece al recargar.
+- La página lleva adentro la letra, el ícono y la imagen: no le pide nada al servidor caído.
+  No tiene dirección propia: solo se ve con el servidor caído.
+- Plan gratis: 100.000 pedidos por día al Worker, sin contar la API. Si se pasara, la ruta en
+  **Fail open** sigue llevando a la app, solo que sin la página.
+
+Para subirla o cambiar la imagen (desde la PC de desarrollo, en una terminal propia, no la de
+Claude):
+
+1. Dejar una sola imagen (png, jpg, webp o gif, menos de 1 MB; hoy `mantenimiento.jpeg`) en
+   `Cotizador_FE/cloudflare/mantenimiento/`. Si es otra, cambiar `IMAGE_ALT` en `armar.mjs`
+   por lo que muestra y dice. Después correr ahí `node armar.mjs`.
+2. La primera vez, `npx wrangler@4.153.0 login` (abre Cloudflare para dar permiso).
+3. `npx wrangler@4.153.0 deploy`: sube el Worker y crea la ruta `app.oemia.ar/*`.
+4. La primera vez, en la zona `oemia.ar` → **Rutas de Workers**:
+   - en `app.oemia.ar/*`, **Request limit failure mode** en **Fail open (proceed)**;
+   - **Agregar ruta** `app.oemia.ar/api/*` con Worker **Ninguno**.
+5. Probar: la app anda igual y Monitoreo sigue mostrando la IP real. Para ver la página, al
+   reiniciar el backend abrir la app en ese minuto: tiene que aparecer y volver sola.
 
 **La app en `app.oemia.ar`** (bloque 4, hecho el 9 de noviembre de 2026 en la PC de
 desarrollo, para la prueba), en la zona `oemia.ar`:
@@ -349,6 +401,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-10 | `oemia.ar` lleva a la app (302, hasta que haya una web) y página de mantenimiento con un Worker de Cloudflare. |
 | 2026-11-10 | Repuestos consultados por chasis y la revisión de las candidatas del catálogo: la migración 0009 corre sola al arrancar. |
 | 2026-11-10 | Arreglo de Precios con la matriz de reemplazos cargada y el front llamando a la API solo con el cliente tipado (`npm run check:api`); cómo publicar a mano. |
 | 2026-11-09 | Tarea programada «OEMIA backend productivo»: arranca al prender la PC y lo vuelve a levantar si se cae. |
