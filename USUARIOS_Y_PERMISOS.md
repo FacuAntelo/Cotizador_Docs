@@ -76,7 +76,8 @@ Un usuario puede tener **varios roles** (`user_roles`), y sus permisos son la su
 | `dealer_profile` | Se reparte | Razón social, CUIT y logo en `organizations`; dirección, teléfono y mail en `branches` |
 | `workshop_prices` | Sucursal | — |
 | `recent_vehicles` | Sucursal | — |
-| `catalog_candidates` | Compartida | Es conocimiento del catálogo de Nissan y sirve para que el sistema aprenda. Suma quién la validó |
+| `catalog_candidates`, `catalog_validations` | Compartida | Es conocimiento del catálogo de Nissan y sirve para que el sistema aprenda. Cada validación guarda la organización y quién la hizo; la revisa el administrador de plataforma |
+| `vehicle_parts` | Organización | Los números cotizados para cada chasis: un cliente puede volver a cualquier sucursal |
 | `llm_calls`, `quote_runs` | Organización, sucursal y usuario | Ya tienen `user_id` |
 | Tablas de `observability` | Suman `organization_id` | Sin foreign key, como el resto de la telemetría |
 
@@ -319,11 +320,18 @@ de una, solo esa aparece desactualizada, en el cotizador y en Monitoreo.
 - **Administración**, según los permisos:
   - Plataforma: organizaciones (con el cupo), sucursales con sus depósitos (si suman, si se
     ignoran) y el agente del DMS de cada una (generar el token, que se muestra una sola vez),
-    usuarios de todas, la lista de precios y las compatibilidades de Nissan, y el registro de
-    seguridad.
+    usuarios de todas, la lista de precios y las compatibilidades de Nissan, las familias
+    candidatas al catálogo (cada validación con su chasis y su número, para aprobarla o
+    descartarla) y el registro de seguridad.
   - Organización: sus usuarios (alta con contraseña temporal, roles, sucursales, desactivar,
     resetear la contraseña, desbloquear, cerrar sus sesiones, cargar sus cuentas) y su registro
     de seguridad.
+  - El alta de una sucursal pide nombre, código de concesionario, dirección y teléfono. El mail
+    y la hora de mano de obra se cargan desde el presupuesto, y la ubicación ya no se carga:
+    la que tenían las sucursales queda como estaba.
+  - El alta de un usuario elige las sucursales primero, debajo de la organización. Si la
+    organización no tiene sucursales activas, lo avisa al abrir y no deja crear: sin sucursal
+    no se puede cotizar.
   - **Monitoreo**, filtrable por organización. Reemplaza el acceso solo desde esta PC
     (`MONITOR_ALLOWED_HOSTS`).
 
@@ -406,7 +414,8 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
   valor, las tablas del negocio no devuelven nada: si algo se olvida, falla cerrado.
 - **Qué tablas:**
   - Por su organización: `organizations` (la propia), `branches`, `users`, `roles` (los del
-    sistema, sin organización, se ven siempre), `estimates`, `insurers` y `audit_log`.
+    sistema, sin organización, se ven siempre), `estimates`, `insurers`, `audit_log` y
+    `vehicle_parts`.
   - Por su sucursal: `deposits`, `dms_agents`, `dms_stock_uploads`, `loans`,
     `recent_vehicles` y `workshop_prices`.
   - Por su presupuesto, su depósito o su usuario: las líneas, pedidos, insumos y órdenes de
@@ -856,6 +865,17 @@ En la rama `feat/publicar` de los tres repositorios.
   el front leía `replacements` y el backend manda `reemplazos`. Arreglado, y el front pasó a
   llamar a la API solo con el cliente tipado, con `npm run check:api` (ver
   [STANDARDS.md](STANDARDS.md#el-contrato-con-el-front)).
+- **Arreglos del 10 de noviembre**, pedidos al cargar la base: el alta de sucursal ya no pide
+  mail, hora de mano de obra, latitud ni longitud; el alta de usuario elige las sucursales
+  arriba y no deja empezar sin sucursales activas (antes fallaba recién al final); el ejemplo
+  del usuario dice «ej. nombre.apellido». En el cotizador, agregar un repuesto por número y
+  consultar al asesor todo lo que el catálogo no resuelve (ver
+  [CONTEXT.md](CONTEXT.md#4-cotizador-unificado--post-cotizar)).
+- **También del 10 de noviembre:** los números cotizados quedan guardados por chasis (solo
+  número y descripción, 180 días desde la última consulta) y se vuelven a cotizar desde
+  «Consultados antes»; Administración → Catálogo para revisar las familias candidatas con
+  cada validación. Migración 0009 (`vehicle_parts` con RLS, `catalog_validations` y la
+  revisión en `catalog_candidates`).
 - Sigue: la PC como servidor y cargar la base.
 
 ## Decisiones tomadas

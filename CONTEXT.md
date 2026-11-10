@@ -330,7 +330,37 @@ Endpoint principal. Una sola llamada desde texto libre a números de pieza compl
 ]
 ```
 
-Los repuestos no encontrados en el catálogo se incluyen con `nombre=null`, `familia=null`, `numeros=[]`.
+Lo que el catálogo no resuelve pasa directamente por el asesor IA (sección 6): el ítem que el
+matcher no encontró, tenga `interpretacion` o no, y el que encontró pero sin números en el EPC
+para el vehículo. Esos ítems vuelven con `nombre=null`, la `sugerencia` del asesor y, en
+`interpretacion`, la descripción que había propuesto el matcher (su interpretación o el nombre
+del catálogo). Si el EPC está caído, el ítem del catálogo queda sin número y no se consulta al
+asesor, que tampoco podría buscar.
+
+**Agregar un repuesto por número** — `GET /precios/repuestos?numero=…` (permiso `cotizar`).
+Debajo de la tabla, el vendedor escribe un número de pieza, completo o una parte (con guiones,
+espacios o minúsculas, da igual). El backend busca en la lista de precios de Nissan (unos 43.000
+repuestos, más los códigos repetidos): primero los que empiezan con el texto y después los que
+lo contienen, hasta 20, y avisa si hay más (`hay_mas`). Desde 3 caracteres, con una consulta por
+pausa. El elegido se suma al final de la tabla con la descripción de la lista, la marca
+«Agregado por número», su stock de SAP y del taller, sus reemplazos y su precio, y sin
+«Corregir IA». Un número completo de 10 caracteres que no está en la lista se puede agregar
+igual, con el número como nombre. Lo agregado a mano queda al cotizar otro pedido para el mismo
+vehículo: las filas del pedido nuevo van antes, y cambiar de vehículo lo saca. Mientras el
+matcher lee un pedido nuevo no se puede agregar.
+
+**Repuestos consultados por chasis** — `GET /vehiculos/{chasis}/repuestos` y `POST` para
+anotar (permiso `cotizar`). El cotizador recuerda los números cotizados para cada chasis, solo
+el número y la descripción, en la tabla `vehicle_parts` de cada organización. Se anotan solos:
+los del catálogo con números del EPC al terminar la cotización (con el nombre del catálogo),
+los del asesor IA cuando el vendedor los valida (con la descripción del asesor) y los
+agregados por número. Lo que el asesor sugiere sin validar no se anota. Con el vehículo
+elegido, debajo de **Cotizar** aparece «Consultados antes · N»: la lista, la última consulta
+primero, se elige con casillas y **Cotizar** los suma a la tabla con la marca «Consultado
+antes» y su precio, stock y reemplazos de ese momento. Los que ya están en la cotización
+aparecen marcados y no se vuelven a sumar. Cada consulta renueva la fecha; lo que no se cotiza
+en `VEHICLE_PARTS_DAYS` días (180 por defecto) deja de mostrarse y se borra en la próxima
+anotación de la organización.
 
 ### 5. Catálogo normalizado (143 repuestos)
 
@@ -342,13 +372,15 @@ Reglas del matcher que importan: solo asigna un repuesto del catálogo si es exa
 
 ### 6. Asesor IA para repuestos fuera de catálogo
 
-Si el matcher marca un ítem con `interpretacion` (existe pero no está en el catálogo), `PartAdvisorService` (`app/services/part_advisor.py`) hace un ida y vuelta con un segundo modelo (`ANTHROPIC_ADVISOR_MODEL`, por defecto `claude-opus-5-5`), en paralelo con el resto de la cotización:
+Todo ítem que el catálogo no resuelve (sección 4) va directamente al asesor: `PartAdvisorService` (`app/services/part_advisor.py`) hace un ida y vuelta con un segundo modelo (`ANTHROPIC_ADVISOR_MODEL`, por defecto `claude-opus-5-5`), en paralelo con el resto de la cotización:
 
-1. **Propuesta**: el modelo recibe el texto del cliente tal cual (no la interpretación del matcher: si es errónea lo arrastra a otra pieza), el vehículo (del EPC) y los repuestos del catálogo que comparten palabras con el pedido, marcados como descartados. Las familias que pertenecen al catálogo se filtran también en el código: si el pedido fuera una de ellas, el matcher ya la habría encontrado. Devuelve familias en una sola de dos listas: `familias_vehiculo` (hasta 6 que podrían ser de este vehículo) o `familias_otros_modelos` (si cree que el vehículo no lleva la pieza: hasta 6 habituales en otros modelos Nissan). Más una `aclaracion` para el vendedor y `es_kit`. Si el nombre sirve para piezas distintas ("volante": de dirección o del motor), propone familias de todas en lugar de elegir una; si es un kit que el matcher no separó, propone las de cada pieza del kit (pueden ser del catálogo).
+1. **Propuesta**: el modelo recibe el texto del cliente y la descripción completa que propuso el matcher: el texto solo puede ser jerga o un kit entero («kit de distribución»), y la descripción dice qué pieza buscar («Tensor de cadena de distribución»). Si el ítem es una pieza de un kit, se le pide solo esa pieza; si el texto del cliente y la descripción no coinciden, sigue al cliente y lo cuenta en `aclaracion`. También recibe el vehículo (del EPC) y los repuestos del catálogo que comparten palabras con el pedido, marcados como descartados. Si el ítem era del catálogo pero el EPC no tenía números de sus familias, en cambio, se le dice cuáles se buscaron, no se las vuelve a proponer y se buscan otras (puede que en ese vehículo la pieza lleve otra familia o que no la lleve). Hasta el 10 de noviembre de 2026 el asesor recibía solo el texto del cliente, y los ítems sin `interpretacion` o sin números del EPC quedaban «No encontrado» hasta que el vendedor tocaba «Corregir IA». Las familias que pertenecen al catálogo se filtran también en el código: si el pedido fuera una de ellas, el matcher ya la habría encontrado. Devuelve familias en una sola de dos listas: `familias_vehiculo` (hasta 6 que podrían ser de este vehículo) o `familias_otros_modelos` (si cree que el vehículo no lleva la pieza: hasta 6 habituales en otros modelos Nissan). Más una `aclaracion` para el vendedor y `es_kit`. Si el nombre sirve para piezas distintas ("volante": de dirección o del motor), propone familias de todas en lugar de elegir una; si es un kit que el matcher no separó, propone las de cada pieza del kit (pueden ser del catálogo).
 2. **EPC**: se buscan esas familias para el chasis.
 3. **Elección** (misma conversación, con los números completos del EPC): una opción si corresponde una sola pieza, varias con una `pregunta` para el cliente si son piezas distintas (ej. sonda delantera o trasera), o ninguna. Se descartan números que el EPC no devolvió. `seleccion` dice cómo se eligen: `"una"` si son alternativas, `"varias"` si son piezas de un kit; en ese caso el front muestra casillas y las piezas marcadas pasan a la tabla, cada una en su fila.
 
-Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el vehículo probablemente no lleva esa pieza. En el front, estos ítems van en su propia sección "Asesor IA", debajo de la tabla, con la interpretación, el resultado, la confianza, las opciones y los botones **Validar** / **Descartar**: validar pasa el ítem a la tabla de repuestos identificados y llama a `POST /catalogo/candidatos`, que guarda la familia en la tabla `catalog_candidates` como **candidata pendiente**: el catálogo se actualiza a mano después de revisarlas (`GET /catalogo/candidatos`).
+Si es de `familias_otros_modelos` y el EPC no devuelve nada, se informa que el vehículo probablemente no lleva esa pieza. En el front, estos ítems van en su propia sección "Asesor IA", debajo de la tabla, con la interpretación, el resultado, la confianza, las opciones y los botones **Validar** / **Descartar**: validar pasa el ítem a la tabla de repuestos identificados y llama a `POST /catalogo/candidatos`, que guarda la familia en la tabla `catalog_candidates` como **candidata pendiente** y cada validación en `catalog_validations` (qué pidió el cliente, la interpretación, el chasis, los números, la organización y el usuario). Los números validados quedan además entre los consultados del chasis.
+
+**Revisar las candidatas** — Administración → **Catálogo**, solo el administrador de plataforma (`GET /catalogo/candidatos?estado=…` y `PATCH /catalogo/candidatos/{familia}`). Lista las familias con su descripción, cómo las pidieron, el nombre técnico y cuántas veces se validaron, filtradas por estado (pendientes por defecto). «Ver validaciones» muestra cada una: cuándo, el chasis, el número validado, el pedido y quién (las últimas 50). Las validadas antes del 10 de noviembre de 2026 solo tienen las listas juntas de la candidata, sin el par chasis y número. **Aprobar**, **Descartar** y **Volver a pendiente** guardan el estado con quién y cuándo. Aprobar no la suma sola al catálogo del matcher: queda marcada para sumarla a mano.
 
 **Pedidos ambiguos.** Si el texto nombra piezas distintas y el pedido no aclara cuál, el matcher no elige: lo marca con `ambiguo: true` y lo manda al asesor (aunque alguna esté en el catálogo), que ofrece una opción por pieza con su `pregunta`. En ese caso el asesor sí puede proponer familias del catálogo.
 
@@ -490,7 +522,9 @@ Las tablas sin prefijo están en `app`.
 
 | Tabla | Qué guarda |
 |---|---|
-| `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor. |
+| `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor, con su estado (pendiente, aprobada o descartada) y quién la revisó. |
+| `catalog_validations` | Cada validación de una candidata: pedido, interpretación, chasis, números, organización y usuario. |
+| `vehicle_parts` | Números de pieza cotizados para cada chasis de una organización, con su descripción y la última consulta (`VEHICLE_PARTS_DAYS`). |
 | `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
 | `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades (30 días) |
 | `estimates` | Presupuestos formales de una organización, con la sucursal donde se hicieron y quién los hizo y aceptó: número (único en la organización), fecha, validez, cliente, datos del concesionario al emitirlo, total con IVA, compañía de seguros, tareas de chapa y pintura y lo acordado al aceptar (franquicia, inspección final, pago del seguro) |
