@@ -852,6 +852,10 @@ En la rama `feat/publicar` de los tres repositorios.
   productivo» con el usuario dueño de `C:\OEMIA`, sin administrador ni contraseña guardada,
   sin límite de tiempo y revisando cada minuto que siga corriendo (detalle en
   [PRODUCCION.md](PRODUCCION.md#la-tarea-programada)).
+- **Cargando la base** (10 de noviembre) Precios se rompía con la matriz de reemplazos cargada:
+  el front leía `replacements` y el backend manda `reemplazos`. Arreglado, y el front pasó a
+  llamar a la API solo con el cliente tipado, con `npm run check:api` (ver
+  [STANDARDS.md](STANDARDS.md#el-contrato-con-el-front)).
 - Sigue: la PC como servidor y cargar la base.
 
 ## Decisiones tomadas
