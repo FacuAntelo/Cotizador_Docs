@@ -299,6 +299,20 @@ errores documentados. Así /docs queda completa automáticamente:
 )
 ```
 
+### El contrato con el front
+
+- **El front llega a la API solo con `api`** (openapi-fetch, en `src/api/client.ts`), tipado con
+  `src/api/schema.d.ts`: cada dirección queda atada a lo que manda y a lo que devuelve, y un
+  campo que no coincide no compila. Nada de `fetch` a mano ni tipos escritos aparte: ESLint
+  frena el `fetch` suelto (salvo en `client.ts` y la telemetría).
+- **Por eso cada endpoint lleva `response_model`**: sin él, el front recibe `unknown`.
+- **Si cambia un schema del backend**, en el front: `npm run gen:api` (lee el contrato del código
+  del backend, sin levantarlo), `npm run typecheck` para ver qué ajustar, y `schema.d.ts` se
+  commitea con el cambio. `npm run check:api` falla si quedaron desfasados.
+- Por qué: en noviembre de 2026 el front leía `replacements` y el backend mandaba `reemplazos`,
+  y Precios se rompió en productivo. Al tipar todo aparecieron dos más: Monitoreo leía el stock
+  del taller como uno solo (es uno por sucursal) y Precios no contemplaba el costo vacío.
+
 ### README.md
 
 Mantener actualizado con cada cambio relevante. Secciones mínimas:
@@ -397,6 +411,7 @@ uv run pytest tests/ -v  # todos
 - [ ] Llamadas externas medidas con `step()`, y a Claude con `llm_call()`
 - [ ] Errores con mensaje para el usuario y detalle técnico en el log
 - [ ] Rutas nuevas en el grupo de límites que corresponde
+- [ ] Si cambió un schema de la API: `npm run gen:api` y `npm run check:api` en el front
 - [ ] README actualizado si el cambio es visible para quien usa el proyecto
 - [ ] Commit hecho con mensaje convencional descriptivo
 

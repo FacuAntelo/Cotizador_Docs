@@ -152,6 +152,7 @@ el log.
 - Si alguien lo levantara con `uvicorn main:app`, uvicorn cambiaría la IP de la conexión y el
   backend de productivo rechazaría todos los pedidos con 403: falla a la vista, no en silencio.
 - **Al prender la PC:** la tarea programada «OEMIA backend productivo» (ver abajo).
+- **Publicar una versión nueva:** ver [Publicar una versión nueva](#publicar-una-versión-nueva).
 
 ### La tarea programada
 
@@ -191,7 +192,6 @@ Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 
 **Ver si anda:** `Get-ScheduledTask -TaskName "OEMIA backend productivo"` (estado `Running`) y
 el log del backend en `C:\OEMIA\Cotizador_BE\logs\`.
-- **Publicar una versión nueva:** ver abajo.
 
 ## Publicar una versión nueva
 
@@ -210,10 +210,25 @@ el log del backend en `C:\OEMIA\Cotizador_BE\logs\`.
   3. reinicia el backend y revisa que `/api/salud` responda;
   4. si no responde, vuelve a la versión anterior y lo deja en el log.
 - **Lo urgente, a mano:** `publicar.ps1 -Ahora`.
+- **Mientras no esté `publicar.ps1`**, a mano (así se publicaron el 10 de noviembre el arreglo
+  de Precios y el front tipado con el contrato del backend):
+  1. `git pull --ff-only origin main` en `C:\OEMIA\Cotizador_BE` y `C:\OEMIA\Cotizador_FE`
+     (`uv sync --frozen --extra otel` si cambió `uv.lock`, `npm ci` si cambió
+     `package-lock.json`).
+  2. `npm run build` en el front, guardando antes `dist\assets` y devolviendo después los
+     archivos viejos: el backend lee `index.html` **al arrancar** y lo tiene en memoria, así
+     que hasta reiniciarlo sigue pidiendo los archivos de la versión anterior (sin ellos, la
+     página queda en blanco).
+  3. Reiniciar el backend (PowerShell como administrador; la tarea lo levanta en menos de un
+     minuto):
+     `Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
+  4. Revisar que `https://app.oemia.ar/` pida el `assets/index-….js` nuevo y que
+     `/api/salud` responda.
 - **Backend y front se mergean el mismo día** cuando un cambio necesita a los dos: si no, a la
   noche se publica una mitad.
-- **Más adelante:** que GitHub Actions corra los tests en cada push y que la tarea de la noche
-  publique solo commits con los tests en verde.
+- **Más adelante:** que GitHub Actions corra en cada push los tests, el typecheck y
+  `npm run check:api` (que el front coincida con la API del backend), y que la tarea de la
+  noche publique solo commits con todo en verde.
 
 ## Si alguien pierde el celular
 
@@ -333,6 +348,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-10 | Arreglo de Precios con la matriz de reemplazos cargada y el front llamando a la API solo con el cliente tipado (`npm run check:api`); cómo publicar a mano. |
 | 2026-11-09 | Tarea programada «OEMIA backend productivo»: arranca al prender la PC y lo vuelve a levantar si se cae. |
 | 2026-11-09 | Túnel de Cloudflare `app.oemia.ar` → `127.0.0.1:8000` desde la PC de desarrollo, solo Argentina, TLS 1.2 como mínimo. |
 | 2026-11-09 | Usuarios de productivo y base `cotizador` creados; primer arranque del backend de productivo, con la revisión en orden. |

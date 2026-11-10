@@ -547,9 +547,9 @@ eventos y `TELEMETRY_MAX_BYTES` (64 KB) por lote.
 Monitoreo → Navegador muestra cada Web Vital en el percentil 75 con la calificación de
 Google (por ejemplo, LCP es bueno hasta 2,5 s; INP, hasta 200 ms).
 
-Además, cada pedido del front lleva su `X-Request-ID` (middleware de `openapi-fetch` y
-`apiFetch` en `src/api/client.ts`), y los errores del servidor se muestran con el código
-para soporte.
+Además, cada pedido del front lleva su `X-Request-ID` (middleware de `openapi-fetch` en
+`src/api/client.ts`, por donde pasan todos), y los errores del servidor se muestran con el
+código para soporte.
 
 ---
 
