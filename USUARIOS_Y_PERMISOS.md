@@ -4,8 +4,11 @@ Estado: plan acordado con el usuario el 8 de noviembre de 2026 y repasado el 9. 
 se construyeron en la rama `feat/usuarios` de los tres repositorios y se mergearon a `main` el 9
 de noviembre (ver [Cómo quedó la etapa 1](#cómo-quedó-la-etapa-1), [la 2](#cómo-quedó-la-etapa-2),
 [la 3](#cómo-quedó-la-etapa-3), [la 4](#cómo-quedó-la-etapa-4) y
-[la 5](#cómo-quedó-la-etapa-5)). Falta la 6: publicar en internet y reforzar Postgres.
-Lo que queda por resolver está en [Abiertas](#abiertas).
+[la 5](#cómo-quedó-la-etapa-5)). La 6, publicar en internet y reforzar Postgres, está en curso
+en la rama `feat/publicar` (ver [Cómo va la etapa 6](#cómo-va-la-etapa-6)). Lo que queda por
+resolver está en [Abiertas](#abiertas) y lo que se dejó para después, en
+[Pendientes](#pendientes). La configuración de productivo está en
+[PRODUCCION.md](PRODUCCION.md).
 
 Cómo engancha el login con la observabilidad: [LOGIN_Y_OBSERVABILIDAD.md](LOGIN_Y_OBSERVABILIDAD.md).
 
@@ -153,8 +156,11 @@ agente del DMS, que usa su propio token.
 - **Contraseñas con Argon2id.** Mínimo 12 caracteres, sin reglas de composición. Se rechazan
   las muy comunes y las que contienen el usuario.
 - **Código de verificación** de 6 dígitos de una app (Google Authenticator o similar), que se
-  pide al loguearse: obligatorio para el administrador de plataforma, opcional para los
-  Administradores.
+  pide al loguearse: obligatorio para el administrador de plataforma (sin código configurado
+  no entra), opcional para los demás. Si alguien pierde el celular, un Administrador de su
+  organización le quita el código desde Administración (y se le cierran las sesiones); al de
+  plataforma se le configura otro desde la consola de la PC del servidor
+  (`python -m app.cli configurar-codigo`).
 - **Cada PC queda recordada**, como en Mercado Libre, y la sesión se protege contra el robo
   de cookies: los virus que las copian del navegador son hoy la forma más común de robar
   cuentas.
@@ -198,8 +204,11 @@ agente del DMS, que usa su propio token.
 - **Un solo lugar a la vez.** El usuario tiene una sola sesión en uso (`users.active_session_id`).
   Al entrar desde otra PC, la anterior deja de andar y muestra «Tu usuario se abrió en otra
   PC»; el front se entera en su próximo pedido o en menos de 30 segundos. Si vuelve a la
-  primera PC, toca **Usar acá** y la retoma sin escribir la contraseña, porque esa PC sigue
-  recordada; la otra queda afuera. Varias pestañas del mismo navegador son la misma sesión.
+  primera PC, **tiene que ingresar de nuevo**, con la contraseña y el código si lo tiene; la
+  otra queda afuera. Es a propósito: un usuario no se comparte entre varias PCs con solo tocar
+  un botón, porque el concesionario paga un usuario por cada persona que cotiza (decisión 21;
+  hasta la etapa 6 bastaba con «Usar acá»). Varias pestañas del mismo navegador son la misma
+  sesión.
   Si alguien entra con la contraseña de otro, el dueño lo nota porque lo sacan.
 - **Mis dispositivos**, en Mi cuenta: cada PC recordada con navegador, IP y último uso, y un
   botón para cerrarla. Un Administrador puede cerrar todas las de un usuario de su
@@ -216,7 +225,8 @@ agente del DMS, que usa su propio token.
   entrar. No hay mails: si alguien la olvida, un admin se la resetea.
 - **El administrador de plataforma se crea con un comando** en la PC del servidor
   (`uv run python -m app.cli crear-admin`), que pide la contraseña ahí mismo y configura el
-  código de verificación. Desde la web no se pueden crear administradores de plataforma.
+  código de verificación. Desde la web no se pueden crear administradores de plataforma, ni
+  quitarles el código: si cambia de celular, `uv run python -m app.cli configurar-codigo`.
 - **Registro de seguridad** (`audit_log`): los logins buenos y fallidos, los bloqueos, los
   cambios y reseteos de contraseña, las altas, bajas y cambios de rol, las sesiones cerradas y
   quién cargó cada cuenta de EPC, SAP o el localizador. Lo ve el administrador de plataforma
@@ -390,10 +400,10 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
 `AND organization_id = <la del pedido>` y no devuelve nada.
 
 - **Cómo sabe Postgres de qué organización es el pedido:** al empezar cada transacción, el
-  backend fija `SET LOCAL app.organization_id = '<id>'` con la organización del usuario. Lo
-  hace un solo lugar (un evento de la sesión de SQLAlchemy que lee la organización del pedido
-  desde una `ContextVar`), así los repositorios no cambian. Sin ese valor, las tablas del
-  negocio no devuelven nada: si algo se olvida, falla cerrado.
+  backend fija `app.organization_id` (solo para esa transacción) con la organización del
+  usuario. Lo hace un solo lugar (un evento de la sesión de SQLAlchemy que lee la
+  organización del pedido desde una `ContextVar`), así los repositorios no cambian. Sin ese
+  valor, las tablas del negocio no devuelven nada: si algo se olvida, falla cerrado.
 - **Qué tablas:**
   - Por su organización: `organizations` (la propia), `branches`, `users`, `roles` (los del
     sistema, sin organización, se ven siempre), `estimates`, `insurers` y `audit_log`.
@@ -404,14 +414,18 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
     `integration_accounts`.
   - Sin RLS, porque son de todos: la lista de precios, las compatibilidades, los candidatos
     del catálogo, las sesiones guardadas de EPC y SAP (se comparten por huella) y la
-    observabilidad (solo la lee la plataforma, y la API ya filtra Monitoreo).
+    observabilidad, con `llm_calls` y `quote_runs` (la escribe el escritor de métricas, que no
+    es de ningún pedido, y la API ya filtra Monitoreo por organización).
 - **Lo que no es de una sola organización** usa la conexión de sistema, que se saltea RLS:
   el login y la lectura de la sesión de cada pedido (antes de saber quién es), la subida del
-  agente del DMS (antes de saber de qué sucursal es), las tareas de fondo (alertas,
-  precalentar las cuentas, limpieza) y la plataforma en Administración. Esa conexión se usa
-  solo desde esos módulos, y un test lo controla.
+  agente del DMS (antes de saber de qué sucursal es), las alertas, el precalentado de las
+  cuentas, lo que va por huella de una cuenta (cómo le fue y el último uso), la consola y la
+  plataforma. Esa conexión se usa solo desde esos módulos, y un test lo controla. La limpieza
+  de lo vencido y las particiones van con el dueño de las tablas.
 - **Tests:** por cada tabla, una consulta sin filtro con la organización 1 no ve filas de la 2,
   y sin organización no ve ninguna.
+- **El registro de seguridad de una organización** muestra al administrador de plataforma
+  como «Administración de OEMIA»: RLS le oculta los usuarios de plataforma.
 - **Contra qué protege y contra qué no:** protege de los errores del propio código (un filtro
   olvidado, una ruta nueva sin organización). No frena a quien logre ejecutar SQL arbitrario
   con el usuario de la app, porque podría cambiar `app.organization_id`; contra eso están las
@@ -422,15 +436,15 @@ en cada consulta, aunque el código se olvide del `WHERE`. Si la app pide
 ## Acceso desde internet
 
 Todos los usuarios, de cualquier sucursal y organización, entran a **esta PC por internet**, en
-`app.oemia.com.ar` (confirmado el 9 de noviembre de 2026), así `oemia.com.ar` queda libre para
-una web.
+`app.oemia.ar` (confirmado el 9 de noviembre de 2026), así `oemia.ar` queda libre para una
+web. `oemia.com.ar` también es del usuario y redirige a `oemia.ar` (decisión 28).
 
 - **Cloudflare Tunnel, sin abrir puertos.** El programa `cloudflared` corre como servicio de
   Windows y abre una conexión de salida hacia Cloudflare. Los usuarios entran a Cloudflare, y
   Cloudflare les pasa los pedidos a esta PC por esa conexión. En el router no se abre nada, la
   IP de la oficina no queda a la vista y anda aunque el proveedor cambie la IP. Para eso el DNS
-  de `oemia.com.ar` pasa a Cloudflare (cuenta gratis, cambiando los servidores de DNS en NIC
-  Argentina).
+  de los dominios pasa a Cloudflare (cuenta gratis, cambiando los servidores de DNS en NIC
+  Argentina): hecho el 9 de noviembre con `oemia.ar` y `oemia.com.ar`.
 - **El certificado es uno para el dominio y lo pone Cloudflare**, gratis y renovado solo. De
   Cloudflare a esta PC el túnel ya va cifrado.
 - **El backend entrega también el front**, sin Caddy: la carpeta `dist` que arma
@@ -442,10 +456,11 @@ una web.
   así la cookie viaja igual que en productivo.
 - **Publicar una versión nueva:** `npm run build` y reiniciar el backend.
 - **La IP real de cada pedido:** con el túnel todos llegan desde `127.0.0.1`, y la IP de quien
-  llama viene en el header `CF-Connecting-IP`. Hay que usarla en los límites de uso, el bloqueo
-  del login, los logs y Monitoreo; hoy se toma `request.client.host` (`app/core/access.py`,
-  `app/core/rate_limit.py` y el middleware de observabilidad). Se le puede creer al header
-  porque el backend solo escucha en `127.0.0.1`.
+  llama viene en el header `CF-Connecting-IP`. La usan los límites de uso, el bloqueo del
+  login, los logs y Monitoreo, desde un solo lugar (`app/core/client_ip.py`), y solo si el
+  pedido viene de esta PC. `X-Forwarded-For` no se usa: lo puede inventar el usuario. Por eso
+  el backend se levanta con `python -m app.server`, que apaga los «proxy headers» de uvicorn
+  (hecho en la etapa 6).
 - **Nada se publica antes del login.** Hoy cualquiera que llegue cotiza con las cuentas de EPC
   y SAP, gasta la IA y ve los costos. Además `MONITOR_ALLOWED_HOSTS` deja ver Monitoreo desde
   `127.0.0.1`, y con el túnel todo llega desde ahí: Monitoreo quedaría abierto a internet. El
@@ -494,13 +509,24 @@ revisarlas de a una.
 5. **Administración:** organizaciones, sucursales, depósitos, agentes del DMS, usuarios con sus
    roles y el cupo, la carga de la lista de precios y las compatibilidades, y el registro de
    seguridad.
-6. **Publicar en internet y cierre de seguridad:** el DNS en Cloudflare, `cloudflared`, el
-   backend entregando el front, la IP real desde `CF-Connecting-IP`, apagar `/docs`, la regla
-   de solo Argentina, la alerta de muchos logins fallidos, exigir al entrar el código de
-   verificación de la plataforma, que un Administrador pueda quitarle el código a quien perdió
-   el celular, la [seguridad en Postgres](#seguridad-en-postgres) (solo local, un usuario para
-   cada cosa, el registro que no se puede borrar y Row Level Security) y el aviso de privacidad
-   a los empleados (Ley 25.326). El túnel se prende al final de esta etapa.
+6. **Publicar en internet y cierre de seguridad**, en bloques (ver
+   [Cómo va la etapa 6](#cómo-va-la-etapa-6)):
+   1. Backend listo para internet: entorno de productivo, el backend entregando el front,
+      headers de seguridad, la IP real desde `CF-Connecting-IP`, apagar `/docs`, el «sigo» de
+      Cotizar para Cloudflare, la alerta de muchos ingresos fallidos, los scripts de
+      desarrollo y productivo, y [PRODUCCION.md](PRODUCCION.md) con toda la configuración.
+   2. Código de verificación y sesiones: exigir al entrar el código de la plataforma, que un
+      Administrador pueda quitarle el código a quien perdió el celular, y que volver a una PC
+      desplazada pida ingresar de nuevo (decisión 21).
+   3. La [seguridad en Postgres](#seguridad-en-postgres): un usuario para cada cosa, el
+      registro que no se puede borrar y Row Level Security.
+   4. Lo que hace el usuario: la redirección de `oemia.com.ar` (los dos dominios ya están en
+      Cloudflare), `cloudflared`, Postgres solo local, los usuarios y la base de productivo
+      (`scripts/preparar_postgres.py productivo`), el backend al prender la PC, la PC como
+      servidor y cargar la base.
+   5. Pruebas por internet (DBSC, Cotizar sin error 524, el agente del DMS) y prender el túnel.
+
+   El aviso de privacidad a los empleados salió de esta etapa (ver [Pendientes](#pendientes)).
 
 ## Cómo quedó la etapa 1
 
@@ -596,7 +622,7 @@ revisarlas de a una.
 
 - **La API va bajo `/api`** (`app/core/paths.py`). Los límites de uso, los registros y la
   configuración siguen nombrando las rutas sin el prefijo. En desarrollo el servidor de Vite
-  pasa `/api` a `127.0.0.1:8000` (`vite.config.ts`, y `VITE_API_URL=/api` en
+  pasa `/api` al backend de desarrollo, hoy en `127.0.0.1:8001` (`vite.config.ts`, y `VITE_API_URL=/api` en
   `.env.development`): el front y la API quedan en el mismo nombre, como en productivo.
 - **`npm run gen:api`** (`scripts/gen-api.mjs`) genera los tipos sin el prefijo, y el documento
   de `/telemetria` ya no rompe la generación.
@@ -661,8 +687,151 @@ revisarlas de a una.
   que exige organización) y cargarla abre el diálogo de la contraseña.
 - **Mi cuenta** muestra las cuentas de EPC, SAP y el localizador solo a quien cotiza.
 - **Para probar en esta PC:** `scripts/sembrar_desarrollo.py` suma `prueba.plataforma`, un
-  administrador de plataforma sin código de verificación que existe solo en la base de
-  desarrollo.
+  administrador de plataforma que existe solo en la base de desarrollo (desde la etapa 6 entra
+  con un código de prueba fijo, `DEV_TOTP_SECRET`).
+
+## Cómo va la etapa 6
+
+En la rama `feat/publicar` de los tres repositorios.
+
+**Bloque 1, backend listo para internet (hecho):**
+
+- **`ENVIRONMENT=produccion`** (acepta el nombre viejo, `OTEL_ENVIRONMENT`): sin `/docs`,
+  `/redoc` ni `/openapi.json`; solo se atienden pedidos que vienen de esta PC (por
+  `cloudflared`), los demás reciben 403; manda HSTS; y el backend no arranca si la
+  configuración es insegura (`app/core/production.py`: `CORS_ORIGINS` con `*` o sin https,
+  `SERVER_HOST` fuera de esta PC, sin el front compilado, sin `CREDENTIALS_KEY` o con los
+  límites apagados).
+- **`python -m app.server`** levanta el backend con lo importante fijo: `SERVER_HOST`
+  (127.0.0.1), sin los «proxy headers» de uvicorn, sin el header `server` y hasta 30 segundos
+  de espera al apagar. `--recargar` solo en desarrollo.
+- **El backend entrega el front** desde `FRONTEND_DIST` (`app/core/frontend.py`): `assets/`
+  con caché de un año, `index.html` sin caché, las pantallas devuelven `index.html` y una ruta
+  de la API que no existe sigue siendo un 404 en JSON. Es un `Mount`: no pasa por la sesión
+  ni por los límites. Esos archivos no se guardan en `request_log` (solo los 500).
+- **Headers de seguridad** en todas las respuestas (`app/core/web_security.py`) y
+  **Content-Security-Policy** en las páginas, con el hash del script del tema calculado del
+  `index.html` compilado. `base-uri 'self'` y no `'none'`: `html-to-image` usa un `<base>`
+  propio para leer las fuentes del PDF. Probado en el navegador con el front compilado: el
+  tema oscuro y el PDF del presupuesto andan sin violaciones.
+- **La IP real** desde `CF-Connecting-IP` (`app/core/client_ip.py`), también en el
+  middleware de observabilidad, que antes tomaba la de la conexión.
+- **El «sigo» de Cotizar** (`app/core/sse.py`, `SSE_KEEPALIVE_SECONDS`): el generador corre en
+  una sola tarea aparte y una cola le pasa los eventos; si pasan 20 segundos sin eventos se
+  manda un comentario SSE. Si el usuario cierra la pestaña, la tarea se cancela.
+- **Alerta `ingresos_fallidos`:** `ALERT_USER_LOGIN_FAILURES` ingresos fallidos en
+  `ALERT_USER_LOGIN_WINDOW_MINUTES`, de todas las organizaciones, dice desde cuántas IPs.
+- **Scripts:** `scripts/desarrollo.ps1` (backend y front en dos ventanas; revisa Postgres y
+  no arranca con un `.env` de productivo) y `scripts/produccion.ps1` (para la tarea
+  programada; no arranca sin `ENVIRONMENT=produccion`).
+- **[PRODUCCION.md](PRODUCCION.md):** toda la configuración de productivo, con su porqué.
+- Los tests corren como desarrollo y sin el front compilado aunque el `.env` sea de
+  productivo (`tests/conftest.py`).
+- **Puertos:** `SERVER_PORT` vacío es 8000 en productivo y 8001 en desarrollo
+  (`Settings.port`); el proxy de Vite va al 8001 (decisión 26).
+
+**Bloque 2, código de verificación y sesiones (hecho):**
+
+- **La plataforma entra siempre con el código.** Sin código configurado, el login responde
+  403 `falta_configurar_codigo` (con la contraseña correcta: no suma para el bloqueo, pero
+  queda en el registro como ingreso fallido con motivo `sin_codigo`).
+- **`python -m app.cli configurar-codigo`:** código nuevo para un administrador de plataforma
+  que cambió o perdió el celular; le cierra todas las sesiones y queda en el registro
+  (`totp_activado` con origen `configurar-codigo`). Solo para usuarios de plataforma.
+- **Quitar el código desde Administración** (`POST /administracion/usuarios/{id}/quitar-codigo`,
+  con la contraseña recién escrita): para quien perdió el celular. Le cierra todas las
+  sesiones y queda en el registro como `codigo_quitado` (migración 0006). No sirve para el
+  propio usuario (409 `propio_usuario`), para quien no tiene código (409 `sin_codigo`) ni para la
+  plataforma (404, no pertenece a ninguna organización). En el diálogo del usuario, con
+  confirmación.
+- **«Usar acá» pide la contraseña** (y el código si lo tiene), igual que el login (decisión
+  21): una contraseña mal cuenta para el bloqueo y queda en el registro con motivo
+  `usar_aca`, y la ruta entra en el límite de intentos del login. La PC desplazada ya no
+  retoma sola cuando la otra sale (se sacó `take_free_slot`), y después de «No fui yo» también
+  hay que escribir la contraseña.
+- **El registro de seguridad** dice el motivo de cada ingreso fallido.
+- `scripts/sembrar_desarrollo.py` le pone a `prueba.plataforma` el código de la clave fija
+  `DEV_TOTP_SECRET`.
+- Probado en el navegador: PC desplazada con contraseña mal y bien, quitar el código a un
+  usuario, el registro y el ingreso de la plataforma con su código.
+
+**Bloque 3, seguridad en Postgres (hecho):**
+
+- **Tres usuarios de Postgres, tres URLs:** `DATABASE_URL` (la app, con RLS),
+  `SYSTEM_DATABASE_URL` (el sistema, `BYPASSRLS`) y `MIGRATIONS_DATABASE_URL` (el dueño de las
+  tablas: migraciones, particiones y limpieza de lo vencido). Vacías en desarrollo, las dos
+  últimas usan `DATABASE_URL` (con un aviso de que RLS no se aplica); en productivo son
+  obligatorias y con tres usuarios distintos.
+- **`scripts/preparar_postgres.py`**, con el superusuario `postgres` (lo corre el usuario):
+  - `desarrollo`: `cotizador_dev_app` y `cotizador_dev_sistema` para las bases de desarrollo
+    y de los tests, con la contraseña igual al nombre, como `cotizador_dev`, que sigue siendo
+    el dueño (solo sirven en esta PC y las bases no tienen datos de clientes). Corrido el 9
+    de noviembre.
+  - `productivo --env <.env de productivo>`: `cotizador_owner`, `cotizador_app` y
+    `cotizador_sistema` con contraseñas largas al azar y la base `cotizador`, a la que solo
+    se conectan ellos tres. Se corre en el bloque 4, cuando esté la carpeta de productivo.
+  - Las contraseñas viajan ya cifradas (SCRAM) y no se muestran. Se puede volver a correr sin
+    cambiarlas.
+  - Límites de la app y del sistema: 60 segundos por consulta y por transacción abierta sin
+    hacer nada (la carga de la lista de precios de junio de 2026 tarda 0,7 segundos; la
+    consulta más lenta, 0,01) y, en productivo, 30 conexiones cada uno.
+- **Los permisos los da el backend** cada vez que actualiza la base (`app/database/roles.py`):
+  filas de `app` y `observability`, nada de cambiar tablas; en `audit_log`, solo agregar y
+  leer; nada en la tabla de versiones de Alembic.
+- **La organización de cada transacción** (`app/database/tenant.py`): la fija `authenticate`
+  (ahora async, para que valga en todo el pedido): la del usuario, el sistema para la
+  plataforma, ninguna sin sesión. `asyncio.to_thread` y el stream de Cotizar la conservan.
+- **Migración 0007:** la función `app.current_organization_id()` y las políticas de las 23
+  tablas, sin forzar RLS al dueño.
+- **Al arrancar** se revisan los usuarios (`check_database_users`): en productivo no arranca
+  si la app es dueña de tablas, superusuario, puede crear usuarios o bases o se saltea RLS, o
+  si el sistema no se lo saltea.
+- **Tests (809):** corren con los mismos tres usuarios (los de desarrollo). Por cada tabla con
+  RLS, cada organización ve solo lo suyo y sin organización no se ve nada; escribir una fila
+  de otra organización falla; la app y el sistema no pueden editar el registro ni cambiar
+  tablas; toda tabla nueva tiene que quedar clasificada; la lista cerrada del sistema; y la
+  organización en los hilos y en el stream. El código de los tests corre como sistema; los
+  pedidos, como en productivo.
+- Probado en el navegador con la base de prueba: vendedor (presupuestos, usuarios, registro,
+  cuentas, crear y borrar una aseguradora) y plataforma (organizaciones, registro, salud y
+  Monitoreo), sin errores en el log.
+
+**Datos de cada usuario (hecho, antes del bloque 4; decisión 29):**
+
+- **Nombre(s), apellido(s) y mail opcional** (migración 0008). El nombre para mostrar sale de
+  los dos («Facundo Martín Antelo Curto»). A los usuarios que ya existían se les partió el
+  nombre en la última palabra.
+- **El mail es único** sin importar mayúsculas (otra cuenta con el mismo: 409 «El mail … ya lo
+  usa otra cuenta»). **Se entra con el usuario o con el mail.** Sin mail, la contraseña la
+  restablece solo un Administrador.
+- **El usuario lleva solo letras y puntos** (`f.antelo`), entre 3 y 60, y no cambia nunca.
+- **Usuario sugerido** (`GET /administracion/usuarios/sugerencia`, `app/services/usernames.py`):
+  el más corto libre de `f.antelo`, `fm.antelo` y, con dos apellidos, `f.anteloc` y
+  `fm.anteloc`. Sin acentos ni símbolos («Ñañez» da `n.nanez`) y con las partículas pegadas
+  («De la Fuente» da `delafuente`). Si están todos usados no sugiere nada y el Administrador
+  escribe uno. El alta lo completa solo mientras se escriben el nombre y el apellido, y no
+  lo pisa si el Administrador escribió otro.
+- **Los repetidos se buscan en todas las organizaciones** con la función de Postgres
+  `app.taken_usernames()`, que corre como el dueño de las tablas y contesta solo cuáles de
+  los nombres pedidos están usados: así no hace falta la conexión de sistema.
+- `crear-admin` pide nombre(s), apellido(s), mail y sugiere el usuario. El seed de prueba
+  les puso nombre y apellido a sus usuarios.
+- Despedir a alguien ya andaba así: «Desactivar» le cierra las sesiones al instante y libera
+  el lugar del cupo; su usuario queda reservado y su historia, en el registro.
+- Probado en el navegador: el alta con la sugerencia, el mail repetido, la edición y entrar
+  con el mail.
+
+**Bloque 4, lo que hace el usuario (en curso):**
+
+- **`oemia.com.ar` redirige a `oemia.ar`** (hecho el 9 de noviembre): 301 directo a https,
+  con el camino y la consulta (`http://www.oemia.com.ar/prueba?x=1` termina en
+  `https://oemia.ar/prueba?x=1`).
+- **Postgres solo en esta PC** (hecho el 9 de noviembre): `listen_addresses = 'localhost'`
+  (escucha solo en `127.0.0.1` y `::1`), `pg_hba.conf` solo con esas dos direcciones y
+  `scram-sha-256`, y contraseña nueva de `postgres`. Falta prender `log_connections`.
+- La etapa 6 hasta acá se mergeó a `main` para armar la carpeta de productivo desde ahí.
+- Sigue: la carpeta de productivo, los usuarios y la base `cotizador`, `crear-admin`,
+  `cloudflared`, el backend al prender la PC, la PC como servidor y cargar la base.
 
 ## Decisiones tomadas
 
@@ -672,8 +841,8 @@ revisarlas de a una.
 3. Un usuario puede trabajar en **varias sucursales**, eligiendo la activa arriba.
 4. En el cotizador se ve el stock de **la sucursal propia, el resto de las sucursales y la
    planta**, y se puede expandir para ver cuánto tiene cada sucursal.
-5. Se entra con **usuario**, no con mail.
-6. **Todos entran por internet a esta PC**, con `oemia.com.ar` en Cloudflare y un Cloudflare
+5. Se entra con **usuario** o con el **mail**, si lo tiene (decisión 29).
+6. **Todos entran por internet a esta PC**, con `oemia.ar` en Cloudflare y un Cloudflare
    Tunnel. El certificado es uno para el dominio, el de Cloudflare. Solo desde Argentina.
 7. **Se cobra por usuario que cotiza.** Los que solo administran no se cobran. Las sucursales
    las crea solo el administrador de plataforma.
@@ -691,15 +860,60 @@ revisarlas de a una.
     Windows; en los demás navegadores, renovación que detecta reusos y sesiones más cortas.
     Lo sensible pide la contraseña de nuevo.
 17. Las etapas 1 a 5 llegan juntas a `main`, y recién después se publica en internet.
-18. **El nombre público es `app.oemia.com.ar`.**
+18. **El nombre público es `app.oemia.ar`** (era `app.oemia.com.ar`; cambió el 9 de
+    noviembre, ver la decisión 28).
 19. **El usuario de plataforma entra desde cualquier navegador**, con contraseña y el código de
     verificación de la app del celular (obligatorio). No se le exige la sesión atada a la PC.
 20. **Postgres se refuerza antes de publicar, con Row Level Security incluido** (no se espera al
     segundo cliente): solo conexiones locales, un usuario de Postgres para cada cosa y el
     registro de seguridad que la app no puede borrar.
+21. **Volver a una PC desplazada pide ingresar de nuevo** (contraseña y código si lo tiene), no
+    alcanza con «Usar acá» (9 de noviembre de 2026). Es fricción a propósito: si bastara un
+    botón, un solo usuario se usaría en varias PCs, y el concesionario paga por usuario.
+22. **El aviso de privacidad a los empleados (Ley 25.326) sale de la etapa 6** y queda pendiente
+    hasta definir quién es el responsable de los datos: OEMIA como empresa todavía no está
+    constituida y al principio puede ser el dueño como monotributista.
+23. **Restablecer la contraseña por mail** va después de publicar, junto con las alertas por
+    mail: las dos necesitan un servicio de envío de mails y el DNS del dominio en Cloudflare.
+    Mientras tanto, la resetea un Administrador.
+24. **Productivo va en una PC dedicada**, no en la de desarrollo. La primera prueba en internet
+    se hace en la de desarrollo, con Cloudflare apuntando a ella, y después se pasa (ver
+    [PRODUCCION.md](PRODUCCION.md#dónde-vive-cada-cosa)).
+25. **`main` es el código de productivo y se publica solo, de noche**, con una tarea en la PC
+    de productivo que busca los cambios, respalda la base, actualiza y vuelve atrás si falla;
+    lo urgente se publica a mano. Los tests en GitHub Actions como condición para publicar,
+    más adelante (ver [PRODUCCION.md](PRODUCCION.md#publicar-una-versión-nueva)).
+26. **Productivo usa el puerto de siempre (8000) y desarrollo uno fijo propio (8001)**, sin
+    configurar nada (`SERVER_PORT` vacío): productivo no se toca, los dos pueden correr en la
+    misma PC y el front de desarrollo nunca le habla a la base de los clientes.
+27. **La base de productivo es una nueva, `cotizador`**, de `cotizador_owner` y con solo los
+    tres usuarios del backend conectándose; `cotizador_dev` queda para desarrollo. Los
+    usuarios de desarrollo son otros (`cotizador_dev_app` y `cotizador_dev_sistema`): no
+    pueden entrar a la base de productivo aunque estén en el mismo Postgres.
+28. **El dominio es `oemia.ar`, más corto.** `oemia.com.ar` también es del usuario: los dos
+    están en Cloudflare (plan gratis) y `oemia.com.ar` redirige a `oemia.ar` con la misma
+    ruta (ver [PRODUCCION.md](PRODUCCION.md#cloudflare)).
+29. **Cada usuario tiene nombre(s), apellido(s) y mail opcional, y el usuario se arma solo:**
+    `f.antelo`, si está usado `fm.antelo`, y con dos apellidos `f.anteloc` y `fm.anteloc`.
+    Solo letras y puntos (sin números ni espacios), lo más corto posible, y el Administrador
+    puede escribir otro con las mismas reglas. El mail es único; sin mail, la contraseña la
+    restablece solo un Administrador.
 
 ## Abiertas
 
-1. **Volver a una PC desplazada:** propuesto «Usar acá» sin contraseña; la otra opción es pedir
-   la contraseña de nuevo.
-2. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto).
+1. **El Administrador que no cotiza** ve los presupuestos sin poder editarlos (propuesto, ya
+   anda así).
+
+## Pendientes
+
+Lo que se decidió dejar para después de la etapa 6:
+
+1. **Aviso de privacidad a los empleados** (Ley 25.326): qué datos se guardan (usuario,
+   nombre, IP, dispositivo, ingresos, cotizaciones, registro de seguridad), para qué, cuánto
+   tiempo, quién es el responsable y cómo pedir acceso, corrección o borrado. Espera a que se
+   defina el responsable (decisión 22). Conviene que lo revise un abogado.
+2. **Restablecer la contraseña por mail** y **las alertas por mail** (decisión 23). Solo
+   para quien tiene mail; los demás, por un Administrador (decisión 29).
+3. **La publicación automática de noche** y la deploy key de solo lectura (decisión 25).
+4. **Los tests en GitHub Actions** como condición para publicar (decisión 25).
+5. **Pasar productivo a la PC dedicada** después de la primera prueba (decisión 24).

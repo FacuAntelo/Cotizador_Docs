@@ -15,7 +15,7 @@ Sistema para cotizar repuestos Nissan. Dado un texto libre del cliente (con jerg
 - **Base de datos:** Postgres 18 con SQLAlchemy 2, psycopg y migraciones de Alembic (ver [Base de datos](#base-de-datos))
 - **Observabilidad:** logs estructurados, medición de cada request, costos de la IA, límites de uso, alertas y pantalla Monitoreo, sin infraestructura externa; trazas OpenTelemetry opcionales (ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md))
 - **Linting:** Ruff
-- **Puerto backend:** 8000 | **Puerto frontend:** 5173
+- **Puerto backend:** 8001 en desarrollo y 8000 en productivo (`SERVER_PORT` vacío) | **Puerto frontend:** 5173
 
 ---
 
@@ -431,8 +431,10 @@ cd backend
 pip install uv          # solo la primera vez
 uv sync                 # instala todas las deps desde pyproject.toml
 # Copiar .env.example → .env y completar valores
-uv run uvicorn main:app --reload
+uv run --extra otel python -m app.server   # --recargar para reiniciar al guardar
 ```
+
+O los dos juntos: `.\scripts\desarrollo.ps1` (en `Cotizador_BE`). Productivo: [PRODUCCION.md](PRODUCCION.md).
 
 **Frontend:**
 ```bash
@@ -456,7 +458,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 EPC_URL=https://login.superservice.com/login/es-es/
 EPC_SESSION_DIR=~/.epc_session
 EPC_HEADFUL=false          # true para ver el browser (debug)
-DATABASE_URL=postgresql+psycopg://cotizador_dev:cotizador_dev@127.0.0.1:5432/cotizador_dev
+DATABASE_URL=postgresql+psycopg://cotizador_dev_app:cotizador_dev_app@127.0.0.1:5432/cotizador_dev
+SYSTEM_DATABASE_URL=...    # la misma base con el usuario de sistema (se saltea RLS)
+MIGRATIONS_DATABASE_URL=... # la misma base con el dueño de las tablas
 CREDENTIALS_KEY=...        # cifra las cuentas de EPC, SAP y el localizador de cada usuario
 LLM_DAILY_BUDGET_USD=1     # tope de gasto diario en Claude; 0 = sin tope
 LOG_FILE=logs/cotizador.log  # vacío: solo consola
@@ -468,7 +472,15 @@ Las variables de observabilidad (logs, límites de uso, alertas, retención, tra
 
 ## Base de datos
 
-Postgres 18 (`DATABASE_URL`), con SQLAlchemy 2, el driver psycopg y migraciones de Alembic en `migrations/`. En desarrollo es el Postgres instalado en Windows (servicio `postgresql-x64-18`, puerto 5432, solo acepta conexiones de esta PC): la base `cotizador_dev`, con el usuario `cotizador_dev`, que no es superusuario. Los tests crean y vacían las suyas (`cotizador_test` y `cotizador_migraciones_test`) con ese mismo usuario. Todas usan la collation `es-AR`, que se elige al crear la base y no se puede cambiar después. Productivo va a tener su propia base y su propio usuario. El backend aplica las migraciones al arrancar (`upgrade_database()` en el lifespan de `main.py`) y, si Postgres no responde, no arranca y dice cómo levantarlo. Las tablas están en `app/models/` y el acceso en los repositorios de `app/database/`, que son sincrónicos y los routers llaman con `asyncio.to_thread`.
+Postgres 18, con SQLAlchemy 2, el driver psycopg y migraciones de Alembic en `migrations/`. En desarrollo es el Postgres instalado en Windows (servicio `postgresql-x64-18`, puerto 5432, solo acepta conexiones de esta PC): la base `cotizador_dev`. Los tests crean y vacían las suyas (`cotizador_test` y `cotizador_migraciones_test`). Todas usan la collation `es-AR`, que se elige al crear la base y no se puede cambiar después. Productivo usa la base `cotizador`, con sus propios usuarios. El backend aplica las migraciones al arrancar (`prepare_database()` en el lifespan de `main.py`) y, si Postgres no responde, no arranca y dice cómo levantarlo.
+
+Un usuario de Postgres para cada cosa (`app/database/engine.py`; los crea `scripts/preparar_postgres.py`):
+
+- **La app** (`DATABASE_URL`, `session_factory`): solo filas, con Row Level Security. Cada transacción dice su organización (`app/database/tenant.py`), y Postgres deja ver y escribir solo sus filas; sin organización, nada. En desarrollo, `cotizador_dev_app`.
+- **El sistema** (`SYSTEM_DATABASE_URL`, `system_session_factory`): se saltea RLS. Solo para lo que no es de una sola organización (el login, el agente del DMS, las alertas, el precalentado, la consola y la plataforma); un test controla qué módulos lo usan. En desarrollo, `cotizador_dev_sistema`.
+- **El dueño de las tablas** (`MIGRATIONS_DATABASE_URL`, `owner_session_factory`): migraciones, particiones mensuales y limpieza de lo vencido. En desarrollo, `cotizador_dev`.
+
+Los permisos sobre las tablas los da el backend al actualizar la base (`app/database/roles.py`): la app y el sistema solo tocan filas, y en `audit_log` solo agregan y leen. Una tabla nueva en `app` se clasifica: con RLS (su política va en la migración que la crea, como en `0007_row_level_security`) o de todos; `tests/integration/test_row_level_security.py` falla hasta que se decide. Un hilo propio (`threading.Thread`, `ThreadPoolExecutor`) no hereda la organización: usar `asyncio.to_thread` o decirla con `as_organization`. Las tablas están en `app/models/` y el acceso en los repositorios de `app/database/`, que son sincrónicos y los routers llaman con `asyncio.to_thread`.
 
 Hay dos schemas: `app`, con el negocio (el de todos los modelos que no digan otro), y `observability`, con la telemetría. `public` no existe: la migración inicial lo elimina, así que toda tabla y toda consulta dice su schema (`app.estimates`). En `psql`, `SET search_path TO app, observability;` evita escribirlo en cada consulta. Una extensión nueva se instala en un schema explícito (`CREATE EXTENSION pg_trgm SCHEMA app`).
 
@@ -515,7 +527,7 @@ Para cambiar una tabla: modificar el modelo y crear la migración con `uv run al
 | Requests, integraciones, recursos, alertas y telemetría del navegador | `observability` | Se pueden perder sin afectar al negocio: no tienen foreign keys y sus datos no entran en los respaldos. Ver [OBSERVABILIDAD.md](OBSERVABILIDAD.md#15-tablas-retención-y-consultas-útiles) |
 | Logs de texto | Consola y `logs/` | Nunca en la base. En la nube, `LOG_FILE` vacío: el proveedor junta la consola |
 
-Si el volumen algún día lo justifica, la telemetría puede pasar a otra base o a una herramienta dedicada (Grafana, Sentry) sin tocar el negocio: no tiene foreign keys y ninguna consulta la cruza con las tablas de `app`. Hoy usa la misma conexión que el negocio (`session_factory`). Para llevarla a otra base hace falta una segunda URL, y que el writer y la limpieza diaria, que también escriben y limpian `llm_calls` y `quote_runs`, elijan la conexión según el schema de la tabla. Para una herramienta dedicada, además, Monitoreo tendría que leer de ella.
+Si el volumen algún día lo justifica, la telemetría puede pasar a otra base o a una herramienta dedicada (Grafana, Sentry) sin tocar el negocio: no tiene foreign keys y ninguna consulta la cruza con las tablas de `app`. Hoy usa la misma base que el negocio (`session_factory` para escribir y leer, y el dueño de las tablas para la limpieza diaria). Para llevarla a otra base hace falta una segunda URL, y que el writer y la limpieza diaria, que también escriben y limpian `llm_calls` y `quote_runs`, elijan la conexión según el schema de la tabla. Para una herramienta dedicada, además, Monitoreo tendría que leer de ella.
 
 Dos escrituras están pensadas para muchos usuarios:
 
@@ -532,7 +544,7 @@ concesionario se repartió entre la organización (razón social, CUIT y logo) y
 (dirección, teléfono, mail y hora de mano de obra). Las tablas de observabilidad suman
 `organization_id`, para filtrar Monitoreo.
 
-Si el aislamiento entre organizaciones se hace con Row Level Security, el backend tiene que conectarse con un rol que no sea el dueño de las tablas: RLS no se aplica al dueño (salvo con `FORCE ROW LEVEL SECURITY`) ni a un superusuario, y hoy `cotizador_dev` es el dueño.
+Desde la etapa 6, Postgres repite ese filtro con Row Level Security (ver arriba): el backend atiende los pedidos con un usuario que no es el dueño de las tablas, porque RLS no se aplica al dueño (no se fuerza) ni a un superusuario.
 
 ## Modelo de datos (diseñado, pendiente de implementar en DB)
 

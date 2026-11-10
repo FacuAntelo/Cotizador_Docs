@@ -63,8 +63,8 @@ uv init
 uv add fastapi
 uv add --dev pytest ruff
 
-# Correr el proyecto
-uv run uvicorn main:app --reload
+# Correr el proyecto (nunca `uvicorn main:app`: ver PRODUCCION.md)
+uv run --extra otel python -m app.server --recargar
 
 # Sincronizar entorno desde lockfile
 uv sync
@@ -374,7 +374,10 @@ def test_match_returns_correct_family_for_pdi():
 - Nombres de test descriptivos: `test_[qué]_[condición]_[resultado esperado]`.
 - Un assert por test cuando sea posible.
 - Los tests deben correr sin conexión a internet ni servicios externos, salvo el Postgres
-  local.
+  local. Corren con los mismos tres usuarios que el backend (los de desarrollo de
+  `scripts/preparar_postgres.py desarrollo`): el código del test arma y revisa los datos como
+  sistema, y los pedidos a la API van con la organización de su sesión, con Row Level
+  Security. Lo que borra o crea tablas (particiones, limpieza) usa `owner_session_factory`.
 
 Correr tests:
 ```bash
