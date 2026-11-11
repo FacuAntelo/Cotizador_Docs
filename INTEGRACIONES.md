@@ -566,7 +566,12 @@ agente del DMS son de cada sucursal: se cargan en Administración, no en el `.en
 | `WARMUP_ON_START` | `true` | Abrir ambas sesiones al arrancar el backend |
 | `DATABASE_URL` | (obligatoria) | Base Postgres donde se guarda la foto del stock del taller |
 | `DMS_STALE_MINUTES` | `15` | Antigüedad a partir de la cual la foto de una sucursal está desactualizada |
-| `EPC_MAX_SESSIONS` | `4` | Sesiones del EPC abiertas a la vez (una por cuenta distinta, cada una un navegador); al llegar se cierra la de más tiempo sin uso |
+| `EPC_MAX_SESSIONS` | `10` | Sesiones del EPC abiertas a la vez (una por cuenta distinta, cada una un navegador sin ventana, unos 300 MB); al llegar se cierra la de más tiempo sin uso |
+| `EPC_QUEUE_SECONDS` | `60` | Si están todas con consultas en curso, cuánto espera un pedido su turno dentro del backend antes de avisar `sesiones_ocupadas` |
+| `EPC_CACHE_DAYS` | `30` | Días que se guarda lo que contestó el EPC para un chasis y una familia (`epc_family_results`, de todos): lo usa cualquiera, aunque no tenga cuenta o la licencia esté tomada. Dos pedidos iguales a la vez preguntan una sola vez. El precio, el stock y los reemplazos se consultan siempre |
+
+Cada sesión del EPC deja abierta solo la pestaña del EPC: la del login del portal se cierra
+cuando el EPC terminó de abrir.
 
 ### Trampa conocida: `uvicorn --reload` en Windows
 

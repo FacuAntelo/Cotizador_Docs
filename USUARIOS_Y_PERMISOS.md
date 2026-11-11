@@ -252,15 +252,25 @@ cuenta, y cada usuario carga las suyas en **Mi cuenta**.
   contraseña solo se puede reemplazar. Un Administrador puede cargarla por un usuario de su
   organización, con la misma regla.
 - **Dos usuarios con la misma cuenta comparten una sola sesión.** Las sesiones se identifican
-  por una huella de servicio, usuario **y contraseña** (un HMAC con la clave de cifrado). Si
+  por una huella de servicio, usuario **y contraseña** (un HMAC con la clave de cifrado). El
+  usuario va sin distinguir mayúsculas ni espacios al borde: en productivo, «Pepe» y «pepe»
+  abrían dos EPC que se sacaban la licencia (la migración 0010 recalculó las huellas). Si
   bastara el usuario, cualquiera podría escribir la cuenta de otro con una contraseña
   inventada y usar su sesión. Con una contraseña distinta, intenta su propio login; si está
   mal, falla y se le avisa.
 - **EPC:** cada cuenta distinta es un navegador abierto con su licencia. Compartir la sesión
   evita además que dos usuarios con la misma cuenta se saquen la licencia entre ellos. Cada
   navegador ocupa memoria, así que hay un máximo de sesiones de EPC abiertas
-  (`EPC_MAX_SESSIONS`). Al llegar al máximo se cierra la que lleva más tiempo sin uso; si
-  están todas en uso, se avisa que hay que esperar.
+  (`EPC_MAX_SESSIONS`, 10). Al llegar al máximo se cierra la que lleva más tiempo sin uso; si
+  están todas en uso, el pedido espera su turno dentro del backend hasta `EPC_QUEUE_SECONDS`
+  (60) y recién ahí se avisa. No hay cola de mensajes: un solo servidor y el usuario espera
+  la respuesta en el momento.
+- **Vista general:** en Administración → Cuentas, el Administrador ve las cuentas de su
+  organización y la plataforma las de todas, separadas: por servicio, cada cuenta con quiénes
+  la usan (y si a alguno se la rechaza) y quiénes cotizan sin. «Cargar y asignar a varios»
+  carga una cuenta para varios empleados de una vez (cada carga queda en el registro); para
+  sumar empleados a una que ya está se vuelve a escribir la contraseña. Cambiarla o sacársela
+  a uno sigue siendo desde el usuario; el empleado, en Mi cuenta, cambia solo la suya.
 - **SAP:** el navegador se abre solo para loguear. Las cookies de cada cuenta se guardan
   cifradas en la base, en lugar de `SAP_SESSION_FILE`.
 - **Localizador:** un cliente HTTP por cuenta, sin navegador.
@@ -951,14 +961,6 @@ En la rama `feat/publicar` de los tres repositorios.
 
 ## Pendientes
 
-Lo que se decidió dejar para después de la etapa 6:
-
-1. **Aviso de privacidad a los empleados** (Ley 25.326): qué datos se guardan (usuario,
-   nombre, IP, dispositivo, ingresos, cotizaciones, registro de seguridad), para qué, cuánto
-   tiempo, quién es el responsable y cómo pedir acceso, corrección o borrado. Espera a que se
-   defina el responsable (decisión 22). Conviene que lo revise un abogado.
-2. **Restablecer la contraseña por mail** y **las alertas por mail** (decisión 23). Solo
-   para quien tiene mail; los demás, por un Administrador (decisión 29).
-3. **La publicación automática de noche** y la deploy key de solo lectura (decisión 25).
-4. **Los tests en GitHub Actions** como condición para publicar (decisión 25).
-5. **Pasar productivo a la PC dedicada** después de la primera prueba (decisión 24).
+Lo que se decidió dejar para después de la etapa 6 (el aviso de privacidad, el mail, la
+publicación automática, los tests en GitHub Actions y la PC dedicada) pasó al
+[backlog](BACKLOG.md#después-de-la-etapa-6), con el resto de lo que falta hacer.
