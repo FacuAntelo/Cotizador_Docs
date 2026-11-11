@@ -237,7 +237,7 @@ Toda llamada pasa por `llm_call()` (`app/services/llm_usage.py`), que:
 4. lo suma al gasto del día y al request (costo por cotización);
 5. deja la fila en `llm_calls`, **también si la llamada falló** (sin tokens, con el error).
 
-Operaciones: `match` (matcher, Haiku), `asesor.propuesta` y `asesor.eleccion` (asesor,
+Operaciones: `match` (matcher, Sonnet 5.5 con esfuerzo `ANTHROPIC_EFFORT`), `asesor.propuesta` y `asesor.eleccion` (asesor,
 Opus con esfuerzo `ANTHROPIC_ADVISOR_EFFORT`).
 
 ### Precios
@@ -248,7 +248,8 @@ En `app/core/llm_pricing.py`, en USD por millón de tokens, verificados el 2026-
 |---|---|---|---|---|---|
 | claude-haiku-5-5 (prompt ≤ 100K tokens) | 0,10 | 0,50 | 0,01 | 0,125 | 0,20 |
 | claude-haiku-5-5 (prompt > 100K tokens) | 0,50 | 2,50 | 0,05 | 0,625 | 1,00 |
-| claude-sonnet-5-5 | 2 | 10 | 0,20 | 2,50 | 4 |
+| claude-sonnet-5-5 | 2 | 10 | 0,10 | 2,50 | 4 |
+| claude-sonnet-5 (fallback del matcher) | 2 | 10 | 0,20 | 2,50 | 4 |
 | claude-opus-5-5 | 4 | 20 | 0,20 | 5 | 8 |
 | claude-opus-5 / claude-opus-4-8 (fallback) | 5 | 25 | 0,50 | 6,25 | 10 |
 | claude-fable-5-1 | 10 | 50 | 0,25 | 12,50 | 20 |
