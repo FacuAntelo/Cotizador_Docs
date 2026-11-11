@@ -386,13 +386,37 @@ los usuarios, con su nota en `agregadas`. «Ver alternativas» aparece siempre e
 aunque no haya compatibles: tiene un campo para sumar otro número que sirve en su lugar, y el
 número sumado se puede elegir para cotizar como las demás alternativas.
 
+### 4b. Precio en el cotizador — `POST /precios/consultar`
+
+Todos los importes del Excel de Nissan son **sin IVA**: el **PNC** es el costo del
+concesionario y el **SUG**, el precio sugerido de Nissan. En pantalla se muestran con IVA del
+21%. El cálculo vive en `app/services/prices.py` (`breakdown` y `dealer_price`).
+
+- **Sin margen** configurado: `SUG × 1,21`.
+- **Con margen**: `PNC × 1,21 / (1 − margen)`. El margen de la organización es **sobre el precio
+  de venta**, no un recargo sobre el costo: con 37,5%, el costo es el 62,5% del precio. Ejemplo:
+  PNC $ 11.794,79 → $ 18.871,66 sin IVA → $ 22.834,71 con IVA. Se redondea a centavos el precio
+  sin IVA y el con IVA sale de multiplicarlo por 1,21. Con 0% se cotiza al costo con IVA.
+- El margen va de 0% a menos de 100% (con 100% el precio sería infinito): lo valida la API
+  (`PATCH /precios/margen`, 422 si no) y una restricción de la base
+  (`ck_organizations_dealer_margin_percent`, migración 0011). Hasta noviembre de 2026 era un
+  recargo, `PNC × (1 + margen) × 1,21`, y aceptaba hasta 1000%; la migración se detiene si una
+  organización tiene un margen fuera del rango nuevo.
+- El margen de Nissan es `(SUG − PNC) / SUG`, también sobre el precio de venta. Se toma de la
+  columna Cod Venta; si falta, se calcula.
+- La estrategia de cotización (más caro, más barato con stock, etc.) ordena por el precio final
+  con IVA que manda el backend; el front no recalcula precios. Como el margen es el mismo para
+  todos los números de la organización, el orden entre candidatos no cambia con la fórmula.
+
 ### 5. Catálogo normalizado (143 repuestos)
 
 Convención: `[Nombre funcional] [Superior/Inferior] [Posición] [Lado]`
 
 Cada repuesto tiene: familias (códigos de 5 chars) y aliases (jerga/sinónimos). Vive en la base, en `catalog_entries` (de todos, sin Row Level Security): la primera lectura de una base nueva la llena con `SEED_CATALOG` de `app/services/matcher_service.py`. Lo cambia solo la plataforma, al aprobar una familia candidata en Administración → Catálogo: como repuesto nuevo con el nombre editable, o al final de las familias de uno que ya está (si varias traen números, gana la primera). Cuando la corrección que validó el vendedor era un número de pieza, la candidata guarda como nombre técnico la descripción de ese número en la lista de precios, no el número.
 
-Reglas del matcher que importan: solo asigna un repuesto del catálogo si es exactamente ese (nunca uno parecido); un plural ("amortiguadores") son los dos lados (un ítem por lado si el catálogo los separa, o uno con cantidad 2) con la posición inferida del resto del pedido; y a los repuestos reales que no están en el catálogo les completa `interpretacion` con su nombre técnico. Un kit, juego o service que agrupa repuestos distintos ("kit de filtros", "kit de distribución") se separa en un ítem por repuesto, todos con el mismo `input` y con `kit` = nombre del kit; si se vende como una sola pieza (KIT JUNTAS REPARACION MOTOR) o son varias unidades del mismo repuesto ("juego de bujías" = bujía × 4), es un solo ítem.
+Reglas del matcher que importan: corre con temperatura 0 (el mismo pedido da siempre lo mismo; con la temperatura por defecto, «puerta del izq» a veces salía asignada y a veces no); solo asigna un repuesto del catálogo si es exactamente ese (nunca uno parecido); **nunca supone lado ni posición**: si el catálogo separa el repuesto por lado o por posición y el ítem no lo dice, cotiza todas las variantes que faltan, una por ítem con cantidad 1, y lo avisa en el comentario ("espejo" = izquierdo y derecho; "paragolpes" = delantero y trasero; "puerta" sola = las cuatro), sin deducirlo del resto del pedido; "del" y "tras" después del repuesto son la posición ("puerta del izq" = puerta delantera izquierda); un plural o "ambos" de un repuesto que el catálogo no separa por lado (AMORTIGUADOR TRASERO, TERMOSTATO) es un ítem con cantidad 2; y a los repuestos reales que no están en el catálogo les completa `interpretacion` con su nombre técnico.
+
+Si ese ítem con cantidad 2 vino de un plural o de "ambos", sin una cantidad escrita, después de encontrar el número en el EPC el asesor IA revisa si el vehículo lleva dos piezas distintas: en un Tiida con MR18DE, «ambos termostatos» son el principal (21200) y el sub-termostato (21230). Si encuentra otro número, el del catálogo queda con cantidad 1 y el otro llega como un ítem aparte, con el mismo pedido (evento `extra_match` del stream, numerado a continuación de los del matcher). Cuando el asesor reconoce una pieza del catálogo que el matcher no asignó, busca esas familias en el EPC igual, en lugar de pedirle al vendedor que lo corrija. Un kit, juego o service que agrupa repuestos distintos ("kit de filtros", "kit de distribución") se separa en un ítem por repuesto, todos con el mismo `input` y con `kit` = nombre del kit; si se vende como una sola pieza (KIT JUNTAS REPARACION MOTOR) o son varias unidades del mismo repuesto ("juego de bujías" = bujía × 4), es un solo ítem.
 
 ### 6. Asesor IA para repuestos fuera de catálogo
 
