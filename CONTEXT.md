@@ -349,24 +349,48 @@ igual, con el número como nombre. Lo agregado a mano queda al cotizar otro pedi
 vehículo: las filas del pedido nuevo van antes, y cambiar de vehículo lo saca. Mientras el
 matcher lee un pedido nuevo no se puede agregar.
 
-**Repuestos consultados por chasis** — `GET /vehiculos/{chasis}/repuestos` y `POST` para
-anotar (permiso `cotizar`). El cotizador recuerda los números cotizados para cada chasis, solo
-el número y la descripción, en la tabla `vehicle_parts` de cada organización. Se anotan solos:
-los del catálogo con números del EPC al terminar la cotización (con el nombre del catálogo),
-los del asesor IA cuando el vendedor los valida (con la descripción del asesor) y los
-agregados por número. Lo que el asesor sugiere sin validar no se anota. Con el vehículo
-elegido, debajo de **Cotizar** aparece «Consultados antes · N»: la lista, la última consulta
-primero, se elige con casillas y **Cotizar** los suma a la tabla con la marca «Consultado
-antes» y su precio, stock y reemplazos de ese momento. Los que ya están en la cotización
-aparecen marcados y no se vuelven a sumar. Cada consulta renueva la fecha; lo que no se cotiza
-en `VEHICLE_PARTS_DAYS` días (180 por defecto) deja de mostrarse y se borra en la próxima
-anotación de la organización.
+**Historial del chasis** — `GET /vehiculos/{chasis}/repuestos` (con los días que se guarda,
+`dias`), `POST` para anotar y `DELETE /vehiculos/{chasis}/repuestos/{numero}` para quitar uno
+(permiso `cotizar`). El cotizador recuerda los números cotizados para cada chasis, con la
+descripción y lo que dice el EPC (`epc`: verificado, fuera de catálogo o sin verificar), en la
+tabla `vehicle_parts` de cada organización. Se anotan solos: los del catálogo con números del
+EPC al terminar la cotización (con el nombre del catálogo), los del asesor IA cuando el
+vendedor los valida (con la descripción del asesor) y los agregados por número que el EPC
+verificó. Lo fuera de catálogo EPC o sin verificar entra solo si el vendedor toca «Agregar al
+historial» en la fila (la primera vez se le avisa, con «No volver a mostrar», que se recuerda
+por usuario con `POST /auth/avisos-ocultos`). Lo que el asesor sugiere sin validar no se anota.
+Con el vehículo elegido, debajo de «Repuestos identificados» está la sección «Historial de este
+chasis»: la lista a la vista, la última consulta primero, con la etiqueta de lo que no está en
+el EPC; se elige con casillas y **Cotizar N** los suma a la tabla con la marca «Del historial»
+y su precio, stock y reemplazos de ese momento. Los que ya están en la cotización aparecen
+marcados y no se vuelven a sumar; cada uno se puede quitar con la X. Cada consulta renueva la
+fecha; lo que no se cotiza en `VEHICLE_PARTS_DAYS` días (180 por defecto) deja de mostrarse y
+se borra en la próxima anotación de la organización.
+
+**Agregar repuesto** — el botón «+ Agregar repuesto» (también con la tabla vacía, si hay un
+vehículo) abre una ventana con la búsqueda en la lista de precios. El número elegido se
+verifica con `POST /epc/verificar`: se busca en el EPC, para el chasis, su familia (los
+primeros 5) y se compara. Si está, entra; si el EPC tiene otro y el escrito figura compatible
+(Nissan o usuarios), entra con «Compatible con X del EPC»; si el EPC no tiene nada, entra con
+«Fuera de catálogo EPC»; sin EPC (sin cuenta o caído), con «Sin verificar en EPC». Si el EPC
+tiene otros que no figuran compatibles, se avisa y se elige entre «Agregar el del EPC» y
+«Agregar el mío y guardar la compatibilidad» (con nota opcional).
+
+**Compatibilidades de los usuarios** — `POST /compatibilidades/agregadas` (y `DELETE` para
+borrar una que quedó mal, solo las del concesionario). Van aparte de la lista de Nissan (que se
+reemplaza entera en cada carga), en `user_compatibilities`, en el sentido en que se cargan, con
+nota opcional. Valen para el concesionario de quien la cargó; la plataforma, en Administración
+→ Catálogo, ve quién la cargó, de dónde, la nota y cuántas veces se ofreció, y decide si vale
+para todos. `POST /compatibilidades/consultar` devuelve las de Nissan primero y después las de
+los usuarios, con su nota en `agregadas`. «Ver alternativas» aparece siempre en la fila,
+aunque no haya compatibles: tiene un campo para sumar otro número que sirve en su lugar, y el
+número sumado se puede elegir para cotizar como las demás alternativas.
 
 ### 5. Catálogo normalizado (143 repuestos)
 
 Convención: `[Nombre funcional] [Superior/Inferior] [Posición] [Lado]`
 
-Cada repuesto tiene: familias (códigos de 5 chars) y aliases (jerga/sinónimos). Vive en `app/services/matcher_service.py` como constante `_CATALOG_CONTEXT`.
+Cada repuesto tiene: familias (códigos de 5 chars) y aliases (jerga/sinónimos). Vive en la base, en `catalog_entries` (de todos, sin Row Level Security): la primera lectura de una base nueva la llena con `SEED_CATALOG` de `app/services/matcher_service.py`. Lo cambia solo la plataforma, al aprobar una familia candidata en Administración → Catálogo: como repuesto nuevo con el nombre editable, o al final de las familias de uno que ya está (si varias traen números, gana la primera). Cuando la corrección que validó el vendedor era un número de pieza, la candidata guarda como nombre técnico la descripción de ese número en la lista de precios, no el número.
 
 Reglas del matcher que importan: solo asigna un repuesto del catálogo si es exactamente ese (nunca uno parecido); un plural ("amortiguadores") son los dos lados (un ítem por lado si el catálogo los separa, o uno con cantidad 2) con la posición inferida del resto del pedido; y a los repuestos reales que no están en el catálogo les completa `interpretacion` con su nombre técnico. Un kit, juego o service que agrupa repuestos distintos ("kit de filtros", "kit de distribución") se separa en un ítem por repuesto, todos con el mismo `input` y con `kit` = nombre del kit; si se vende como una sola pieza (KIT JUNTAS REPARACION MOTOR) o son varias unidades del mismo repuesto ("juego de bujías" = bujía × 4), es un solo ítem.
 
