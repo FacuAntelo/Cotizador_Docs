@@ -104,46 +104,26 @@ Después de la primera prueba en esta PC (decisión 24).
 
 ### 12. Que el cotizador aprenda y dependa menos de la IA
 
-Objetivo: casi no usar el matcher y que el repuestero cotice más rápido. Plan acordado el
-2026-11-12, en la rama `costos` de los tres repos. La idea central es un **resolvedor local**
-en el front que convierte el texto en repuestos del catálogo sin IA; la IA queda para el
-fragmento que no entendió.
+Hecho en la rama `costos` (noviembre de 2026): el resolvedor local, las píldoras, cotizar solo
+lo nuevo, eliminar filas con reporte, autocompletado, recomendaciones, pre-cotización, alias
+aprendidos, abreviaturas por usuario y el recorrido de los repuestos sin resultado en
+Monitoreo. Cómo funciona y sus límites: [RESOLVEDOR.md](RESOLVEDOR.md). El catálogo
+normalizado y lo que queda por revisar: [CATALOGO_NORMALIZACION.md](CATALOGO_NORMALIZACION.md).
 
-Hecho: alias en el catálogo y nombres normalizados (ver
-[CATALOGO_NORMALIZACION.md](CATALOGO_NORMALIZACION.md), con lo que queda por revisar).
+Falta:
 
-Etapas que faltan:
-
-1. **Resolvedor local y píldoras.** Los repuestos del pedido van separados por comas o enters,
-   indistintamente. Lo reconocido se marca en verde con un ícono (píldora), lo ambiguo y lo no
-   reconocido se distinguen. Un número de pieza en el texto va al verificador del EPC. Al
-   cotizar, solo los fragmentos sin resolver van a la IA.
-2. **Cotizar solo lo nuevo.** Un fragmento ya cotizado no se vuelve a cotizar; uno editado
-   entra como repuesto nuevo. Borrar texto no quita nada de la tabla: cada fila tiene un botón
-   de eliminar con «Eliminar» o «Eliminar y reportar error», que despliega un texto para
-   explicarlo. «Agregar repuesto» usa el mismo campo: un número busca en la lista de precios,
-   un texto pasa por el resolvedor (puede ser más de un repuesto) y se suma al pedido de arriba.
-3. **Autocompletado.** Hasta 4 opciones por nombre y alias, ordenadas por frecuencia: ↑↓ mueve,
-   Tab acepta, Shift+Enter marca varias, Shift+Tab acepta todas; también con el mouse.
-   «Ambos / todos / plural» expande lados y posiciones, y «X con Y» hace que Y herede a X
-   («paragolpes del con soportes»). Nunca supone lado.
-4. **Pre-cotización.** Cada píldora se cotiza por detrás (EPC, precio, stock). Alimenta lo
-   guardado del EPC, que es global, pero no el historial del chasis del concesionario ni la
-   frecuencia hasta que se toca Cotizar.
-5. **Aprendizaje.** Lo que resuelve la IA queda como alias directo, sin validación del
-   concesionario; también lo que el asesor sugiere y el usuario valida. Se quita con «Corregir
-   IA» o «Eliminar y reportar error»; si la corrección da otro repuesto que no se elimina, ese
-   gana el alias. Abreviaturas por usuario, más las generales: el repuestero elige del catálogo
-   por descripción (las familias son internas) uno o varios repuestos («pds» = paragolpes
-   delantero con soportes, tres repuestos).
-6. **Recomendaciones.** Según lo ya cargado y lo que suele cotizarse junto (presupuestos y
-   cotizaciones; las ventas quedan para cuando estén). Sin texto, las más probables repartidas
-   por zona del auto.
-7. **Asesor y monitoreo.** Guardar la respuesta completa del asesor y mostrarla al revisar
-   candidatas. En Monitoreo, el recorrido de cada repuesto sin resultado: qué escribió el
-   repuestero, qué devolvió el matcher, qué respondió el asesor y qué rechazó o reportó. Lo que
-   el asesor encontró y se validó cuenta como encontrado.
-
-Para más adelante: atributos por número de pieza (óptica LED o halógena, temperatura del
-termostato) y una lista editable de palabras de posición y lado. La posición y el lado siguen
-en la descripción de la entrada.
+- **Probarlo con el EPC y la IA de verdad.** En desarrollo se probó con lo guardado del EPC y
+  sin cuenta de EPC ni de SAP: no se vio un pedido mixto (parte reconocida, parte leída por la
+  IA) ni un número de pieza escrito en el pedido contra el EPC.
+- **Revisar con un repuestero** los alias iniciales y qué pedidos de todos los días no se
+  reconocen todavía (Monitoreo → Sin resultado dice cuántos ítems leyó la IA).
+- **Que la pre-cotización adelante también precio y stock**, no solo el EPC.
+- **Recomendaciones con las ventas** del DMS, cuando estén, y con los presupuestos guardados.
+- **Tolerancia a errores de tipeo** en el resolvedor y en las sugerencias.
+- **Que la plataforma vea los alias aprendidos** de cada concesionario y pueda pasarlos al
+  catálogo, para todos.
+- **Atributos por número de pieza** (óptica LED o halógena, temperatura del termostato) y una
+  lista editable de palabras de posición y lado. La posición y el lado siguen en la descripción
+  de la entrada.
+- **El asesor**: reutilizar sus respuestas por pedido y modelo de vehículo, y probar un modelo
+  más barato con los casos guardados. Ahora se guarda su respuesta completa, que es la base.
