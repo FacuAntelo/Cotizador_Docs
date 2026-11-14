@@ -14,6 +14,22 @@ etiquetas, «Agregar al historial» y el aviso con «No volver a mostrar». Falt
 cuenta de EPC que la búsqueda por familia (los primeros 5 del número) traiga todos los números
 de esa familia para el vehículo, que es contra lo que se compara el número escrito.
 
+### 21. Cotizar por número de pieza, sin chasis
+
+Un modo nuevo en el Cotizador, al lado del de siempre. Pedido el 12/11/2026; el plan está
+aprobado en lo general y falta arrancarlo.
+
+- Un selector «Por chasis» / «Por número de pieza», siguiendo las guías de diseño. Cambiar de
+  modo no borra nada: cada uno conserva su recuadro y su tabla.
+- Lo más minimalista posible: desaparece el chasis y queda un solo recuadro para uno o varios
+  números de pieza. Sin EPC ni IA: el número se busca completo en la lista de precios y en SAP.
+- Con los primeros 7 caracteres saltan las opciones que empiezan así, con número y
+  descripción, para marcar cuáles cotizar.
+- Agregar un número extra tiene que ser fácil: el recuadro queda siempre a mano.
+- Botón «Limpiar» y botón «Copiar para WhatsApp». Por ahora no genera presupuesto.
+- Historial de los últimos números cotizados, de 3 días, compartido por toda la organización
+  y con un filtro para ver solo los propios.
+
 ## Integraciones
 
 ### 16. Confirmar en productivo que dos usuarios con la misma cuenta de EPC no se molestan
