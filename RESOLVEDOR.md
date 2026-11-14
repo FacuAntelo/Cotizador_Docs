@@ -8,19 +8,38 @@ matcher y que el repuestero cotice más rápido. Código: `Cotizador_FE/src/feat
 ## Cómo se lee el pedido
 
 Los repuestos van separados por **comas o enters**, indistintamente. Cada uno se resuelve por
-separado y queda en uno de estos estados, que se ven en el campo y en la línea de abajo
-(«3 reconocidos · 1 lo lee la IA»):
+separado. Al cerrarlo con una coma, Enter o **Tab** queda en el recuadro como un **elipse con su
+cruz**, y lo que se está escribiendo va al final. El estado se ve en el elipse y en la línea de
+abajo, que cuenta solo «identificados · números de pieza · ya cotizados» (en pantalla no se
+habla de IA):
 
 | Estado | Cómo se ve | Qué pasa al cotizar |
 |---|---|---|
-| Reconocido | Píldora verde | Va directo al EPC, sin IA |
-| Número de pieza | Píldora azul | Se verifica en el EPC para el chasis, como «Agregar repuesto» |
-| Lo lee la IA | Subrayado punteado | Es lo único que recibe el matcher |
-| Ya cotizado | Píldora gris | No se vuelve a cotizar |
+| Identificado | Elipse verde, siempre con tilde | Va directo al EPC, sin IA |
+| Número de pieza | Elipse azul, con tilde si la lista de precios lo tiene | Se verifica en el EPC para el chasis, como «Agregar repuesto» |
+| Sin identificar | Elipse de borde punteado | Es lo único que recibe el matcher |
+| Ya cotizado | El mismo elipse | No se vuelve a cotizar |
+
+- **Un texto que nombra varios repuestos se abre en un elipse por repuesto** al cerrarlo,
+  como una abreviatura: «2 puertas del» queda «2 puerta delantera derecha» y «2 puerta
+  delantera izquierda». Solo si todos son del catálogo y cada nombre vuelve a dar ese mismo
+  repuesto; lo ya cotizado no se abre (cambiaría su clave y se volvería a cotizar).
+- **El mismo repuesto no entra dos veces**: mismo texto, mismas piezas con la misma cantidad
+  o mismo número. Queda el primero y el repetido se descarta sin aviso.
+- **Retroceso con el campo vacío no hace nada**: para sacar un repuesto está su cruz.
+- **Alto**: antes de la primera cotización el recuadro crece con el pedido; después tiene alto
+  máximo y su barra, y queda abajo de todo para seguir agregando.
+
+El pedido sigue siendo un solo texto: `requestText.ts` lo cierra y le saca un repuesto, y
+`requestClosing.ts` abre los de varios repuestos y saca los repetidos. Los elipses son cómo se
+muestra.
 
 Qué reconoce, en este orden:
 
-1. **Un número de pieza** (5 + 5 caracteres, con o sin guion, con algún dígito).
+1. **Un número de pieza** (5 + 5 caracteres, con o sin guion, con algún dígito), si la lista
+   de precios lo tiene: se consulta `GET /precios/repuestos` por cada uno. Si la lista no lo
+   tiene, es «Sin identificar» y al cotizar va como texto, no como fila. Sin lista cargada o si
+   la consulta falla, se toma como número, como antes.
 2. **La cantidad escrita**: «2 pdi», «x4 bujías», «filtro de aceite x3». Otro número en el
    texto lo lee la IA.
 3. **El pedido entero**, si es una abreviatura del usuario, algo que el concesionario ya
@@ -47,21 +66,45 @@ van todas las variantes con la nota «No indicaste el lado: se cotizan todas las
 
 - **Solo lo nuevo.** Lo que ya está en la tabla no se vuelve a cotizar; lo que se agrega al
   texto se suma después. Un repuesto editado entra como nuevo.
-- **Borrar texto no quita nada.** Cada fila tiene **Eliminar**, que pregunta «Eliminar» o
-  «Eliminar y reportar error» (con un texto para explicarlo). Eliminada la fila, ese repuesto
-  se puede volver a cotizar.
+- **La cruz de un elipse lo saca del recuadro, no de la tabla.** Si era un repuesto ya
+  cotizado, su fila se va recién al tocar **Cotizar** de nuevo (sin popup; queda anotado como
+  eliminado). Si sigue pedido de otra forma («pdi» fuera, pero queda su nombre), la fila sigue.
+- Cada fila tiene además **Eliminar**, que pregunta «Eliminar» o «Eliminar y reportar error»
+  (con un texto para explicarlo). Eliminada la fila, ese repuesto se puede volver a cotizar.
+- **Nunca dos filas iguales.** El mismo repuesto escrito de dos formas, o que ya está en la
+  tabla, no se manda de nuevo; y el backend saca lo que el matcher devuelve repetido
+  (`_without_duplicates`: mismo repuesto del catálogo o mismo pedido sin catálogo).
+- **Lo que resuelve el asesor IA también está en la tabla**, al final: lo que se pidió, en qué
+  quedó (consultando, no encontrado, sugerido por IA y falta validar, descartado) y «Ver en
+  Asesor IA», que baja a su tarjeta. Validado, pasa a ser una fila más.
 - **El backend recibe lo reconocido por id de entrada** (`resueltos` en `POST /cotizar/stream`)
   y busca él las familias: no viajan al navegador. `texto` trae solo lo que tiene que leer la
   IA y puede venir vacío. Los ítems llegan con `local: true`.
 - **«Agregar repuesto»** acepta un número (lo busca en la lista de precios, como antes) o una
   descripción: con Enter se suma al pedido de arriba y se cotiza. Pueden ser varios, con comas.
+- **Números que el EPC no reconoce para el chasis**: si para un número escrito el EPC tiene
+  otro que no figura compatible, sale un cartel por cada número del EPC, de a uno, con
+  «1 de N» en el título. Los escritos que dan el mismo número del EPC (dos de la misma pieza)
+  van en el mismo cartel: «Agregar el del EPC» suma ese una vez, y «Agregar los míos» suma los
+  escritos y guarda la compatibilidad de cada uno. «No agregar» pasa al siguiente
+  (`differentNumbers.ts`).
 
 ## Mientras se escribe
 
+- **Abreviaturas**: al escribir una y tocar **espacio** (o Tab), se reemplaza por sus
+  repuestos, cada uno en su elipse con el nombre completo: «sds» → «soporte delantero
+  izquierdo», «soporte delantero derecho». Valen las del usuario, las globales y los alias de
+  una sola palabra que no nombran ninguna pieza («pdi»).
 - **Sugerencias**: hasta cuatro repuestos cuyas palabras empiezan con lo escrito, primero los
-  que más cotiza el concesionario. `Tab` acepta, `↑` `↓` elige, `Shift+Enter` marca varios y
-  `Tab` los acepta, `Shift+Tab` acepta todos, `Esc` cierra. Con el mouse, clic acepta y
-  Ctrl+clic marca.
+  que más cotiza el concesionario. La palabra que se está escribiendo nunca se ignora: «para»
+  es el principio de «paragolpes». `Tab` acepta, `↑` `↓` elige, `Shift+Enter` marca varios y
+  `Tab` los acepta, `Shift+Tab` acepta todos, `Esc` cierra. Con el mouse, clic en el nombre
+  acepta y clic en la casilla (o Ctrl+clic) marca.
+- **Tab**, en orden: expande la abreviatura escrita; si hay sugerencias, acepta; si no, cierra
+  lo escrito como un elipse; con el campo vacío pasa al siguiente control.
+- **Números de pieza**: si el catálogo no sugiere nada y lo escrito parece el principio de un
+  número (5 caracteres o más, con algún dígito), se ofrecen hasta seis de la lista de precios,
+  con su descripción. Es la misma búsqueda que «Agregar repuesto».
 - **Recomendaciones**: debajo del campo. Según lo que ya está en el pedido y en la tabla: lo
   que el concesionario suele cotizar junto, las piezas que van con esa (los soportes de ese
   paragolpes), la del otro lado y las de la misma zona. Sin nada cargado, lo más cotizado,
@@ -89,7 +132,25 @@ van todas las variantes con la nota «No indicaste el lado: se cotizan todas las
 
 **Abreviaturas** (`user_abbreviations`), por usuario: botón «Abreviaturas» sobre el pedido. El
 repuestero escribe la abreviatura y elige del catálogo, por descripción, uno o varios repuestos
-(«pds» = paragolpes delantero y sus dos soportes). Las generales ya vienen como alias.
+(«pds» = paragolpes delantero y sus dos soportes). El diálogo muestra arriba las del sistema:
+las globales, las de posición y lado, y las siglas del catálogo («pdi», «gtd»). Los sinónimos
+de una palabra («sapito») y los alias largos reconocen igual, pero no se listan.
+
+**Abreviaturas globales** (`global_abbreviations`, de todos, sin Row Level Security): las carga
+el administrador de plataforma en Administración → Catálogo. Lo que el sistema ya entiende para
+todos son esas, las de posición (del, tras, izq…) y los alias del catálogo:
+
+- Un usuario **no puede cargar** una que el sistema ya tiene (409 `ya_es_global`).
+- Si después aparece una global **igual** a la de un usuario (mismos repuestos), la del usuario
+  se borra la próxima vez que lee el catálogo: pasa a usar la de todos.
+- Si aparece una global **distinta**, la del usuario sigue valiendo para él (manda sobre la
+  global) y vuelve con `conflicto`: se le muestra en rojo, con la recomendación de quitarla.
+- Una global no puede repetir un alias del catálogo (409 `ya_es_alias`): eso se cambia desde
+  la entrada.
+
+Las primeras globales son `pr` (parabrisas), `pgd` y `pgt` (paragolpes delantero y trasero) y
+`pgds` y `pgts` (cada paragolpes con sus dos soportes). Una base que ya tenía catálogo las
+recibe de la migración 0015; una nueva, al sembrar el catálogo (`SEED_GLOBAL_ABBREVIATIONS`).
 
 **Frecuencia y lo que va junto**: sale de los repuestos cotizados para cada chasis
 (`vehicle_parts`) del último año, por concesionario, y se recalcula cada 10 minutos.

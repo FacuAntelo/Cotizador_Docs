@@ -425,7 +425,8 @@ El cotizador reconoce los repuestos del pedido en el navegador, con el catálogo
 - `GET /cotizar/resolvedor`: las entradas del catálogo (id, nombre, alias, frecuencia y relacionados; sin familias), los alias aprendidos y las abreviaturas del usuario.
 - `POST /cotizar/stream` acepta `resueltos` (repuestos reconocidos, por id de entrada o por familia validada) y `texto` solo con lo que lee la IA. Cotiza lo nuevo y lo suma a la tabla; las filas se sacan con su botón Eliminar.
 - `POST /cotizar/precotizar`: va buscando en el EPC lo reconocido mientras se escribe.
-- `POST` / `DELETE /cotizar/abreviaturas`: las abreviaturas del usuario, cada una con uno o varios repuestos.
+- `POST` / `DELETE /cotizar/abreviaturas`: las abreviaturas del usuario, cada una con uno o varios repuestos. No deja cargar una que el sistema ya tiene para todos.
+- `GET` / `POST` / `DELETE /catalogo/abreviaturas`: las abreviaturas globales, del administrador de plataforma (tabla `global_abbreviations`, de todos; migración 0014). Llegan al cotizador en `abreviaturas_globales` de `GET /cotizar/resolvedor`. Las primeras (`pr`, `pgd`, `pgt`, `pgds`, `pgts`) las carga la migración 0015, o el sembrado del catálogo en una base nueva.
 - `POST /cotizar/acciones`: lo que hizo el repuestero con un ítem (descartado, eliminado, reportado).
 - Tablas: `learned_aliases` y `user_abbreviations` (de cada organización, con Row Level Security) y `quote_item_feedback` (de todos, como `quote_runs`). Migración 0013.
 
