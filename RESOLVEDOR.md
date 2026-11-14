@@ -105,10 +105,9 @@ van todas las variantes con la nota «No indicaste el lado: se cotizan todas las
 - **Números de pieza**: si el catálogo no sugiere nada y lo escrito parece el principio de un
   número (5 caracteres o más, con algún dígito), se ofrecen hasta seis de la lista de precios,
   con su descripción. Es la misma búsqueda que «Agregar repuesto».
-- **Recomendaciones**: debajo del campo. Según lo que ya está en el pedido y en la tabla: lo
-  que el concesionario suele cotizar junto, las piezas que van con esa (los soportes de ese
-  paragolpes), la del otro lado y las de la misma zona. Sin nada cargado, lo más cotizado,
-  una por tipo de pieza. Clic la suma al pedido.
+- **Sin recomendaciones**: desde noviembre de 2026 debajo del campo no se ofrece nada («Lo
+  más pedido» ni «Suele ir con»): no acertaban. `recommend()` sigue en `resolver.ts`, con sus
+  tests, por si vuelven.
 - **Pre-cotización**: 0,7 s después de reconocer un repuesto, con un vehículo elegido, se
   buscan sus familias en el EPC (`POST /cotizar/precotizar`). La respuesta queda en lo guardado
   del EPC, que es de todos; no toca el historial del chasis ni cuenta como cotización.
