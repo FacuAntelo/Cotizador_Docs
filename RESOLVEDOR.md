@@ -184,8 +184,6 @@ recibe de la migración 0015; una nueva, al sembrar el catálogo (`SEED_GLOBAL_A
 - **No tolera errores de tipeo**: «paragolpe» sí (singular), «paragolpez» no.
 - **Lo ambiguo no tiene estado propio**: lo que nombra piezas distintas lo lee la IA, que lo
   marca ambiguo como antes.
-- **Las recomendaciones** usan lo cotizado por chasis. Los presupuestos guardados y las ventas
-  todavía no entran.
 - **Los alias aprendidos son de cada concesionario.** No hay pantalla para que la plataforma
   los vea o los generalice.
 - **`POST /cotizar` (sin stream)** no usa `resueltos`: el front usa solo el stream.

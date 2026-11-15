@@ -462,7 +462,7 @@ Si ese ítem con cantidad 2 vino de un plural o de "ambos", sin una cantidad esc
 
 El cotizador reconoce los repuestos del pedido en el navegador, con el catálogo, sus alias, lo que aprendió el concesionario y las abreviaturas del usuario, y solo manda a la IA lo que no reconoció. El detalle está en [RESOLVEDOR.md](RESOLVEDOR.md); en resumen:
 
-- `GET /cotizar/resolvedor`: las entradas del catálogo (id, nombre, alias, frecuencia y relacionados; sin familias), los alias aprendidos y las abreviaturas del usuario.
+- `GET /cotizar/resolvedor`: las entradas del catálogo (id, nombre, alias y frecuencia; sin familias), los alias aprendidos y las abreviaturas del usuario.
 - `POST /cotizar/stream` acepta `resueltos` (repuestos reconocidos, por id de entrada o por familia validada) y `texto` solo con lo que lee la IA. Cotiza lo nuevo y lo suma a la tabla; las filas se sacan con su botón Eliminar.
 - `POST /cotizar/precotizar`: va buscando en el EPC lo reconocido mientras se escribe.
 - `POST` / `DELETE /cotizar/abreviaturas`: las abreviaturas del usuario, cada una con uno o varios repuestos. No deja cargar una que el sistema ya tiene para todos.
