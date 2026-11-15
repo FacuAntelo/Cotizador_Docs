@@ -16,19 +16,24 @@ de esa familia para el vehículo, que es contra lo que se compara el número esc
 
 ### 21. Cotizar por número de pieza, sin chasis
 
-Un modo nuevo en el Cotizador, al lado del de siempre. Pedido el 12/11/2026; el plan está
-aprobado en lo general y falta arrancarlo.
+Pedido el 12/11/2026. **Hecho en `costos` el 14/11/2026, falta probarlo en pantalla y
+publicarlo**; cómo funciona, en `CONTEXT.md` («Cotizar sin chasis»).
 
-- Un selector «Por chasis» / «Por número de pieza», siguiendo las guías de diseño. Cambiar de
-  modo no borra nada: cada uno conserva su recuadro y su tabla.
-- Lo más minimalista posible: desaparece el chasis y queda un solo recuadro para uno o varios
-  números de pieza. Sin EPC ni IA: el número se busca completo en la lista de precios y en SAP.
-- Con los primeros 7 caracteres saltan las opciones que empiezan así, con número y
-  descripción, para marcar cuáles cotizar.
-- Agregar un número extra tiene que ser fácil: el recuadro queda siempre a mano.
-- Botón «Limpiar» y botón «Copiar para WhatsApp». Por ahora no genera presupuesto.
-- Historial de los últimos números cotizados, de 3 días, compartido por toda la organización
-  y con un filtro para ver solo los propios.
+- Un selector arriba del panel, fuera de él, como en las otras pantallas: «Con chasis» (un auto
+  de frente) y «Por N° de pieza» (una caja). La columna del chasis se cierra con una animación
+  y el recuadro pasa a «Ingresá los números de pieza». Cambiar de modo no borra nada.
+- Cada número se cotiza al cerrarlo (con espacio, coma, Enter o Tab) y va directo a la tabla,
+  con lo último arriba. Las opciones salen desde la primera tecla, con casillas y tope de 20.
+- Los números quedan como elipses en el recuadro; «Limpiar» (o Ctrl+Backspace) los borra todos.
+- La misma tabla sin el EPC, con «Eliminar» sin cartel, «Copiar para
+  WhatsApp» y «Generar presupuesto», con su propia hoja.
+- Lo que no está en la lista de precios entra con aviso y sin consultar SAP, salvo que se pida.
+- Historial de 3 días, compartido por la organización y con «Solo los míos». Se despliega con
+  el botón «Historial».
+- **A mirar en pantalla:** la animación (en Chrome debería interpolar `grid-template-columns`;
+  si no, la columna se cierra de golpe), el recuadro a todo el ancho, la hoja al lado de la
+  tabla, 390 px y tema oscuro. El backend de desarrollo tiene que estar reiniciado: sin eso no
+  hay `/numeros/recientes` ni búsqueda desde 1 carácter.
 
 ## Integraciones
 

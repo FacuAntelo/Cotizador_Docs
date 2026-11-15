@@ -367,6 +367,42 @@ marcados y no se vuelven a sumar; cada uno se puede quitar con la X. Cada consul
 fecha; lo que no se cotiza en `VEHICLE_PARTS_DAYS` días (180 por defecto) deja de mostrarse y
 se borra en la próxima anotación de la organización.
 
+**Cotizar sin chasis** — arriba del panel, fuera de él y centrado, un selector (`Segmented`, como
+en Administración o Monitoreo) con «Con chasis» (un auto de frente) y «Por N° de pieza» (una
+caja). La segunda cierra la columna del chasis con una animación y deja un solo recuadro,
+«Ingresá los números de pieza». Sin EPC ni IA: cada número se cotiza con la lista de
+precios, los reemplazos, SAP y el taller, como lo agregado por número, en una tabla propia;
+cambiar de pestaña no borra nada de ninguno de los dos modos. Código:
+`Cotizador_FE/src/features/part-numbers/`.
+
+- El número se cierra con espacio, coma, Enter o Tab (pegar varios, en renglones, con comas o
+  espacios), tiene que tener forma de número de pieza y va directo a la tabla: el recuadro se
+  vacía y uno que ya está no entra. Dos mitades de 5 que solo juntas son un número («16546
+  ED00J») cuentan como uno: la primera queda en el recuadro esperando la segunda. Desde la
+  primera tecla se ofrecen los de la lista de precios
+  (`GET /precios/repuestos`, que acepta desde 1 carácter), hasta 20, con casillas para elegir
+  varios; con `hay_mas`, «Hay más de 20: escribí más caracteres». Con la lista abierta, Enter o
+  Tab cotizan lo marcado o, si no hay nada marcado, la opción resaltada.
+- La tabla es la de siempre sin lo del chasis (sin «Corregir IA», «Agregar repuesto» ni
+  «Eliminar y reportar error»), con lo último ingresado arriba. «Eliminar» saca la fila sin
+  preguntar.
+- Cada número de la tabla queda en el recuadro como un elipse con su cruz, en el orden en que
+  entró: son la misma lista, sacar el elipse saca la fila y al revés. «Limpiar» (en rojo, arriba
+  del recuadro, o Ctrl+Backspace) borra todos.
+- **Presupuesto** — «Generar presupuesto» abre la hoja a la derecha, como con chasis y con la
+  misma lógica (`useLinkedEstimate`, que usan los dos modos): sin vehículo ni chasis, y armada
+  en el orden en que entraron los números. Cada modo tiene su hoja: cambiar de modo no la
+  cierra ni la mezcla. «Limpiar» deja la hoja abierta, sin atarla a la tabla.
+- Un número que la lista (cargada) no tiene entra con «No está en la lista de precios», sin
+  precio y sin consultar SAP: el taller sí, y SAP solo con «Consultar en SAP» en la fila.
+- **Historial de 3 días** — `GET /numeros/recientes?solo_mios=` (con `dias`) y `POST` para anotar
+  (permiso `cotizar`, sin cuenta de EPC; tabla `quoted_part_numbers` de cada organización,
+  migración 0016). Una fila por usuario y número con la última vez que lo cotizó; lo de más de
+  `RECENT_NUMBERS_DAYS` días (3 por defecto) no se muestra y se borra en la próxima anotación.
+  Se anotan los números de la lista (o todos, sin lista cargada). No se ve hasta tocar
+  «Historial», arriba del recuadro: se despliega arriba de la tabla, con «Solo los míos»,
+  casillas y **Cotizar**, que suma los elegidos y lo vuelve a plegar.
+
 **Agregar repuesto** — el botón «+ Agregar repuesto» (también con la tabla vacía, si hay un
 vehículo) abre una ventana con la búsqueda en la lista de precios. El número elegido se
 verifica con `POST /epc/verificar`: se busca en el EPC, para el chasis, su familia (los
@@ -585,6 +621,7 @@ Las tablas sin prefijo están en `app`.
 | `catalog_candidates` | Familias que sugirió el asesor y validó el vendedor, con su estado (pendiente, aprobada o descartada) y quién la revisó. |
 | `catalog_validations` | Cada validación de una candidata: pedido, interpretación, chasis, números, organización y usuario. |
 | `vehicle_parts` | Números de pieza cotizados para cada chasis de una organización, con su descripción y la última consulta (`VEHICLE_PARTS_DAYS`). |
+| `quoted_part_numbers` | Números de pieza cotizados sin chasis, por usuario de una organización, con su descripción y la última vez (`RECENT_NUMBERS_DAYS`). |
 | `dms_stock` | Última foto del stock del taller, por código y depósito, con la ubicación si el agente la manda |
 | `dms_stock_uploads` | Cada subida del agente del taller: cuándo llegó, cuántos repuestos y unidades (30 días) |
 | `estimates` | Presupuestos formales de una organización, con la sucursal donde se hicieron y quién los hizo y aceptó: número (único en la organización), fecha, validez, cliente, datos del concesionario al emitirlo, total con IVA, compañía de seguros, tareas de chapa y pintura y lo acordado al aceptar (franquicia, inspección final, pago del seguro) |

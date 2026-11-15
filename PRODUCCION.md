@@ -97,6 +97,8 @@ tener presente. El resto queda como en `.env.example`.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Las trazas van al Grafana de esta PC (`docker-compose.yml`). |
 | `LLM_DAILY_BUDGET_USD` | `1` (el de `.env.example`) | Tope diario de la IA en dólares. Revisarlo cuando haya varios concesionarios cotizando. |
 | `VEHICLE_PARTS_DAYS` | Sin poner (180) | Días que se recuerdan los números cotizados de cada chasis desde la última consulta. |
+| `RECENT_NUMBERS_DAYS` | Sin poner (3) | Días del historial de números cotizados sin chasis. |
+| `ANTHROPIC_MAX_RETRIES` | Sin poner (4) | Reintentos cuando Anthropic falla de su lado (503, sobrecarga, conexión) antes de avisar que la IA no responde. |
 
 ## Lo que hace el backend por su cuenta
 

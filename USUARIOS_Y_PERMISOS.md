@@ -196,8 +196,9 @@ agente del DMS, que usa su propio token.
   código de verificación, cargar cuentas de EPC, SAP o el localizador, crear usuarios, cambiar
   roles o cerrar sesiones de otros, generar tokens del DMS y todo lo de plataforma. Con una
   sesión robada no se puede dejar afuera al dueño ni darse permisos.
-- **Aviso de ingreso nuevo:** «Nuevo ingreso desde Chrome en Windows, IP …: ¿fuiste vos?», con
-  un botón para cerrar esa sesión.
+- **Aviso de ingreso nuevo:** desde el 14/11/2026 no se muestra (al usuario no le gustaba). El
+  backend sigue mandando `ingresos_nuevos` en `GET /auth/me`; las sesiones de otras PCs se ven y
+  se cierran en Mi cuenta → Mis dispositivos.
 - **Lo que no se evita:** si el virus sigue en la PC, puede usar el navegador ahí mismo o
   capturar la contraseña al escribirla. Ayudan Windows Defender prendido, vendedores sin
   permisos de administrador en la PC y Chrome al día. Una PC infectada se limpia, se cierran
@@ -652,8 +653,7 @@ revisarlas de a una.
 - **El cliente** manda `X-OEMIA: 1`, renueva la cookie corta una sola vez cuando vence (aunque
   fallen varios pedidos a la vez) y repite el pedido.
 - **El menú** muestra lo que permiten los roles, y cada pantalla pide su permiso. Arriba van el
-  selector de sucursal (`PUT /auth/sucursal`), Mi cuenta y el aviso «Nuevo ingreso desde…
-  ¿fuiste vos?».
+  selector de sucursal (`PUT /auth/sucursal`) y Mi cuenta.
 - **Mi cuenta:** cambio de contraseña, código de verificación (la clave para escribirla en la app
   y el enlace `otpauth://`), Mis dispositivos con «Protegida» o «Sin protección» y las cuentas
   de EPC, SAP y el localizador. Lo sensible abre el diálogo para confirmar la contraseña.
