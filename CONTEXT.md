@@ -418,9 +418,13 @@ reemplaza entera en cada carga), en `user_compatibilities`, en el sentido en que
 nota opcional. Valen para el concesionario de quien la cargó; la plataforma, en Administración
 → Catálogo, ve quién la cargó, de dónde, la nota y cuántas veces se ofreció, y decide si vale
 para todos. `POST /compatibilidades/consultar` devuelve las de Nissan primero y después las de
-los usuarios, con su nota en `agregadas`. «Ver alternativas» aparece siempre en la fila,
-aunque no haya compatibles: tiene un campo para sumar otro número que sirve en su lugar, y el
-número sumado se puede elegir para cotizar como las demás alternativas.
+los usuarios, con su nota en `agregadas`. El botón ⇄ aparece siempre en la fila, aunque no
+haya compatibles, en los dos modos de cotizar, y abre la ventana «Cambiar por un compatible»
+(`CompatiblesDialog`): arriba el **repuesto seleccionado**, después los **repuestos
+compatibles** y los **agregados por tu concesionario**, cada grupo del más barato al más caro
+(sin precio, al final) y con «Sugerido» en el que elige el criterio de cotización. Tocar uno lo
+deja como el que se cotiza y cierra la ventana, sin confirmar. Se agrega una
+compatibilidad con el botón «Agregar compatibilidad», que pasa la ventana a otra pantalla: se busca el número, se confirma («¿Agregar X como compatible de Y?») con nota opcional y «Aceptar», y vuelve a la lista, donde queda sin seleccionarse. Dentro del concesionario cada una dice quién la agregó (`cargada_por`) y se borra con el tacho.
 
 ### 4b. Precio en el cotizador — `POST /precios/consultar`
 
