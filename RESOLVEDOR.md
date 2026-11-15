@@ -97,11 +97,18 @@ van todas las variantes con la nota «No indicaste el lado: se cotizan todas las
   una sola palabra que no nombran ninguna pieza («pdi»).
 - **Sugerencias**: hasta cuatro repuestos cuyas palabras empiezan con lo escrito, primero los
   que más cotiza el concesionario. La palabra que se está escribiendo nunca se ignora: «para»
-  es el principio de «paragolpes». `Tab` acepta, `↑` `↓` elige, `Shift+Enter` marca varios y
-  `Tab` los acepta, `Shift+Tab` acepta todos, `Esc` cierra. Con el mouse, clic en el nombre
-  acepta y clic en la casilla (o Ctrl+clic) marca.
-- **Tab**, en orden: expande la abreviatura escrita; si hay sugerencias, acepta; si no, cierra
-  lo escrito como un elipse; con el campo vacío pasa al siguiente control.
+  es el principio de «paragolpes». `Enter` o `Tab` acepta, `↑` `↓` elige, `→` marca y `←`
+  desmarca (y `Enter` o `Tab` aceptan las marcadas), `Shift+Enter` o `Shift+Tab` acepta todas,
+  `Esc` cierra. Para no quitarle el cursor al texto, `→` marca solo con el cursor al final y `←`
+  desmarca solo si la resaltada está marcada; si no, mueven el cursor (`arrowMark`). Con el
+  mouse, clic en el nombre acepta y clic en la casilla (o Ctrl+clic) marca.
+- La opción que coincide entera con lo escrito también se ofrece. **Ctrl+Backspace** es
+  «Limpiar», en los dos recuadros.
+- **Enter y Tab** son la misma tecla, en orden: expanden la abreviatura escrita; si hay
+  sugerencias, aceptan (las marcadas, si hay); si no, cierran lo escrito como un elipse. Para
+  cerrar lo escrito tal cual con sugerencias a la vista, primero `Esc`. Con el campo vacío, Tab
+  pasa al siguiente control. Lo mismo en el recuadro de los números de pieza, donde aceptar ya
+  es cotizar. Decide `keyAction` en `requestClosing.ts`.
 - **Números de pieza**: si el catálogo no sugiere nada y lo escrito parece el principio de un
   número (5 caracteres o más, con algún dígito), se ofrecen hasta seis de la lista de precios,
   con su descripción. Es la misma búsqueda que «Agregar repuesto».
