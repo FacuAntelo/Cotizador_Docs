@@ -121,6 +121,10 @@ Esto no se configura: está en el código y vale siempre que corresponde.
   PC (`app/core/client_ip.py`). `X-Forwarded-For` no se usa nunca: lo puede inventar el
   usuario. Esa IP es la que usan los límites de intentos, el registro de seguridad, los logs y
   Monitoreo.
+- **La ubicación de cada inicio de sesión** sale de los headers que agrega Cloudflare
+  (`cf-ipcity`, `cf-region`, `cf-region-code`, `cf-ipcountry`), con la misma regla: solo si el
+  pedido viene de esta PC (`app/core/client_location.py`). Se guarda en la sesión y la ve el
+  usuario en Mis dispositivos, en lugar de la IP.
 - **Archivos del front:** los de `assets/` (con hash en el nombre) se guardan un año en caché;
   `index.html` y los íconos se revalidan en cada visita, así una versión nueva llega sola.
 
@@ -237,7 +241,7 @@ el log del backend en `C:\OEMIA\Cotizador_BE\logs\`.
 
 - **Un usuario de una organización:** un Administrador le quita el código en Administración →
   Usuarios → «Quitar código». Se le cierran todas las sesiones; entra con la contraseña y, si
-  quiere, configura un código nuevo en Mi cuenta.
+  quiere, configura un código nuevo desde el menú de su usuario.
 - **Un administrador de plataforma:** desde la consola de la PC de productivo,
   `uv run python -m app.cli configurar-codigo`. Le cierra todas las sesiones. Desde la web no
   se puede: la plataforma entra siempre con el código.
@@ -364,6 +368,7 @@ desarrollo, para la prueba), en la zona `oemia.ar`:
 | Túnel | Uno por PC, creado en Zero Trust → Networks → Tunnels. Public hostname `app.oemia.ar` → `HTTP` `127.0.0.1:8000`. Al pasar a la PC dedicada se crea otro túnel, se prueba, se le pasa `app.oemia.ar` y se borra el de esta PC (así su llave deja de servir). |
 | Firewall | Security → WAF → Custom rules: `(http.host eq "app.oemia.ar" and ip.src.country ne "AR")` → **Block**. |
 | HTTPS | SSL/TLS → Edge Certificates: «Always Use HTTPS» prendido y «Minimum TLS Version» 1.2. El HSTS de Cloudflare, **apagado**: lo manda el backend solo para `app.oemia.ar`; el de Cloudflare vale para toda la zona. |
+| Ubicación | Rules → Settings → Managed Transforms: «Add visitor location headers» prendido (15/11/2026). Le pasa al backend la ciudad, la provincia y el país de cada pedido, para la ubicación de Mis dispositivos. Apagado, todo sigue andando sin ubicación. |
 | Sin tocar | Bot Fight Mode y «Under Attack» apagados (frenan al agente del DMS). Sin reglas de caché para `/api` (el backend igual manda `no-store`). |
 
 Probado por internet: `http` pasa a `https` con 301, `/api/salud` trae HSTS, `nosniff`, `DENY`
@@ -403,6 +408,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-15 | Cloudflare manda la ubicación de cada pedido («Add visitor location headers»), para Mis dispositivos. La guarda la migración 0017 desde que se publique la rama `menu-usuario`. |
 | 2026-11-10 | `oemia.ar` lleva a la app (302, hasta que haya una web) y página de mantenimiento con un Worker de Cloudflare. |
 | 2026-11-10 | Repuestos consultados por chasis y la revisión de las candidatas del catálogo: la migración 0009 corre sola al arrancar. |
 | 2026-11-10 | Arreglo de Precios con la matriz de reemplazos cargada y el front llamando a la API solo con el cliente tipado (`npm run check:api`); cómo publicar a mano. |
