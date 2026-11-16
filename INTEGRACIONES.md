@@ -551,10 +551,10 @@ Instalación y operación: ver el `README.md` de esa carpeta.
 
 ### Configuración (`.env`)
 
-Las cuentas de EPC, SAP y Simetrical son de cada usuario: las carga en Mi cuenta y se
+Las cuentas de EPC, SAP y Simetrical son de cada usuario: las carga desde el menú de su usuario y se
 guardan cifradas en la base (`integration_accounts`). Cada servicio tiene una sesión por
 cuenta (`app/core/integrations.py`): dos usuarios con la misma cuenta comparten una sola.
-Sin cuenta cargada, esa parte del cotizador avisa «Cargá tu cuenta de … en Mi cuenta».
+Sin cuenta cargada, esa parte del cotizador avisa «Cargá tu cuenta de … desde el menú de tu usuario, arriba a la derecha».
 
 El código de concesionario de Nissan (para SAP y el localizador), la ubicación desde la que
 el localizador mide las distancias, los depósitos que no suman o se ignoran y el token del

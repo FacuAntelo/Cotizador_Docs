@@ -198,7 +198,7 @@ agente del DMS, que usa su propio token.
   sesión robada no se puede dejar afuera al dueño ni darse permisos.
 - **Aviso de ingreso nuevo:** desde el 14/11/2026 no se muestra (al usuario no le gustaba). El
   backend sigue mandando `ingresos_nuevos` en `GET /auth/me`; las sesiones de otras PCs se ven y
-  se cierran en Mi cuenta → Mis dispositivos.
+  se cierran en el menú del usuario → Mis dispositivos.
 - **Lo que no se evita:** si el virus sigue en la PC, puede usar el navegador ahí mismo o
   capturar la contraseña al escribirla. Ayudan Windows Defender prendido, vendedores sin
   permisos de administrador en la PC y Chrome al día. Una PC infectada se limpia, se cierran
@@ -212,9 +212,17 @@ agente del DMS, que usa su propio token.
   hasta la etapa 6 bastaba con «Usar acá»). Varias pestañas del mismo navegador son la misma
   sesión.
   Si alguien entra con la contraseña de otro, el dueño lo nota porque lo sacan.
-- **Mis dispositivos**, en Mi cuenta: cada PC recordada con navegador, IP y último uso, y un
-  botón para cerrarla. Un Administrador puede cerrar todas las de un usuario de su
-  organización.
+- **Mis dispositivos**, en el menú del usuario: cada PC recordada con navegador, ubicación
+  aproximada y último uso, y un botón para cerrarla. Un Administrador puede cerrar todas las de
+  un usuario de su organización.
+- **Ubicación en vez de IP** (desde el 15/11/2026): al usuario la IP no le dice nada. Al iniciar
+  sesión se guarda «Rosario, Santa Fe» en `sessions.location` (migración 0017), a partir de los
+  headers de ubicación que agrega Cloudflare (ver «La IP real de cada pedido»). Mis dispositivos
+  y la pantalla «Tu usuario se abrió en otra PC» la muestran con una «i» que aclara que es
+  aproximada; si no se sabe, no muestran nada. Las sesiones abiertas antes quedan sin ubicación.
+  La API del usuario (`GET /auth/sesiones`, `otra_sesion`, `ingresos_nuevos` y el 409
+  `sesion_desplazada`) manda `localidad` y ya no la IP. El registro de seguridad de
+  Administración sigue mostrando la IP.
 - Cambiar o resetear la contraseña cierra todas las demás sesiones. Desactivar un usuario
   corta todas las suyas.
 - **Protección contra CSRF:** las rutas que escriben exigen un header propio del front, que un
@@ -243,7 +251,7 @@ agente del DMS, que usa su propio token.
 ## Cuentas de EPC, SAP y localizador por usuario
 
 Hoy hay una sola sesión de cada servicio, con las cuentas del `.env`. Pasa a haber una por
-cuenta, y cada usuario carga las suyas en **Mi cuenta**.
+cuenta, y cada usuario carga las suyas desde **el menú de su usuario** (arriba a la derecha).
 
 - **La contraseña se guarda cifrada**, no con hash, porque hay que usarla para loguearse. La
   clave de cifrado está en el `.env` (`CREDENTIALS_KEY`), nunca en la base: un respaldo de la
@@ -271,15 +279,16 @@ cuenta, y cada usuario carga las suyas en **Mi cuenta**.
   la usan (y si a alguno se la rechaza) y quiénes cotizan sin. «Cargar y asignar a varios»
   carga una cuenta para varios empleados de una vez (cada carga queda en el registro); para
   sumar empleados a una que ya está se vuelve a escribir la contraseña. Cambiarla o sacársela
-  a uno sigue siendo desde el usuario; el empleado, en Mi cuenta, cambia solo la suya.
+  a uno sigue siendo desde el usuario; el empleado, desde su menú, cambia solo la suya.
 - **SAP:** el navegador se abre solo para loguear. Las cookies de cada cuenta se guardan
   cifradas en la base, en lugar de `SAP_SESSION_FILE`.
 - **Localizador:** un cliente HTTP por cuenta, sin navegador.
 - Las sesiones se cierran tras `SESSION_KEEPALIVE_HOURS` sin uso. Al arrancar se precalientan
   las cuentas que se usaron en el último día.
 - Las píldoras de EPC y SAP de arriba muestran la sesión de la cuenta del usuario que mira.
-- Sin una cuenta cargada, esa parte del cotizador avisa «Cargá tu cuenta de EPC en Mi cuenta»
-  y el resto sigue andando.
+- Sin una cuenta cargada, esa parte del cotizador avisa «Cargá tu cuenta de EPC desde el menú
+  de tu usuario, arriba a la derecha» y el resto sigue andando. La píldora de EPC o SAP sin
+  cuenta es un botón «Cargar cuenta» que abre la ventana de esa cuenta con el formulario listo.
 - Los logs, las alertas y Monitoreo identifican la cuenta por su id: nunca el usuario ni la
   contraseña de la cuenta.
 - `EPC_USERNAME`, `EPC_PASSWORD`, `SAP_USERNAME`, `SAP_PASSWORD`, `SIMETRICAL_USERNAME`,
@@ -319,15 +328,21 @@ de una, solo esa aparece desactualizada, en el cotizador y en Monitoreo.
 
 - **Login**, con el código de verificación si el usuario lo tiene, y cambio de contraseña
   obligatorio la primera vez.
-- **Menú principal:** Cotizador, Presupuestos, Préstamos y Lista de precios, cada uno según los
-  permisos. Monitoreo sale de acá.
+- **Menú principal:** Cotizador, Presupuestos, Préstamos, Precios y Administración, en ese
+  orden y cada uno según los permisos. Monitoreo sale de acá.
 - **Presupuestos:** los de toda la organización, con la sucursal de cada uno y un filtro por
   sucursal. Uno nuevo queda en la sucursal activa.
-- **Lista de precios** de la organización: de cuándo es la lista de Nissan, y el margen y la
-  estrategia (con `precios.gestionar`).
-- **Selector de sucursal** arriba, para quien trabaja en más de una.
-- **Mi cuenta:** cambiar la contraseña, el código de verificación, Mis dispositivos, cargar las
-  cuentas de EPC, SAP y el localizador y ver si conectan, y salir.
+- **Precios** de la organización: de cuándo es la lista de Nissan, y el margen y la
+  estrategia (con `precios.gestionar`). En Administración la pestaña sigue llamándose «Lista de
+  precios», porque ahí se carga.
+- **Selector de sucursal** arriba a la izquierda, al lado del logo, para quien trabaja en más
+  de una.
+- **Menú del usuario** (desde el 15/11/2026 reemplaza a la pantalla Mi cuenta): un botón
+  redondo con el ícono de una persona, al final de la barra. Muestra el nombre, el usuario, la
+  organización y los roles, y abre en ventanas la contraseña, el código de verificación, Mis
+  dispositivos y las cuentas de EPC, SAP y el localizador (esta, solo para quien cotiza). Lleva
+  también el tema oscuro y, al final y en rojo, Cerrar sesión. `/mi-cuenta` lleva al inicio, y
+  un usuario sin ninguna pantalla va a `/sin-pantallas`.
 - **Administración**, según los permisos:
   - Plataforma: organizaciones (con el cupo), sucursales con sus depósitos (si suman, si se
     ignoran) y el agente del DMS de cada una (generar el token, que se muestra una sola vez),
@@ -481,6 +496,12 @@ web. `oemia.com.ar` también es del usuario y redirige a `oemia.ar` (decisión 2
   pedido viene de esta PC. `X-Forwarded-For` no se usa: lo puede inventar el usuario. Por eso
   el backend se levanta con `python -m app.server`, que apaga los «proxy headers» de uvicorn
   (hecho en la etapa 6).
+- **La ubicación de cada inicio de sesión:** Cloudflare la agrega con la regla «Add visitor
+  location headers» (Rules → Settings → Managed Transforms, activada el 15/11/2026):
+  `cf-ipcity`, `cf-region`, `cf-region-code` y `cf-ipcountry`. `app/core/client_location.py`
+  les cree con la misma regla que a la IP, solo si el pedido viene de esta PC. Las provincias
+  salen del código ISO con tildes; fuera del país se suma el código del país. Si se apaga la
+  regla, el cotizador sigue andando y Mis dispositivos deja de mostrar la ubicación.
 - **Nada se publica antes del login.** Hoy cualquiera que llegue cotiza con las cuentas de EPC
   y SAP, gasta la IA y ve los costos. Además `MONITOR_ALLOWED_HOSTS` deja ver Monitoreo desde
   `127.0.0.1`, y con el túnel todo llega desde ahí: Monitoreo quedaría abierto a internet. El
@@ -953,6 +974,13 @@ En la rama `feat/publicar` de los tres repositorios.
     Solo letras y puntos (sin números ni espacios), lo más corto posible, y el Administrador
     puede escribir otro con las mismas reglas. El mail es único; sin mail, la contraseña la
     restablece solo un Administrador.
+30. **Mi cuenta pasa a un menú del usuario, con ventanas** (15/11/2026): una pantalla aparte
+    para la contraseña o las cuentas no era práctica. El botón redondo de usuario, arriba a la
+    derecha, abre cada cosa en su ventana y deja Cerrar sesión en rojo y al final. La sucursal
+    pasa a la izquierda, al lado del logo.
+31. **Mis dispositivos muestra la ubicación, no la IP** (15/11/2026): la IP no le sirve al
+    usuario. La ubicación sale de los headers de Cloudflare, es aproximada y lo aclara una «i»;
+    si no se sabe, no se muestra nada. El registro de seguridad conserva la IP.
 
 ## Abiertas
 
