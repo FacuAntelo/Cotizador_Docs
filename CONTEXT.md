@@ -148,7 +148,7 @@ En el front, cada línea de la columna **Stock en planta** tiene una lupa que ab
 
 En la tabla de **Repuestos identificados** cada fila tiene una casilla, y todas vienen tildadas: el vendedor destilda lo que no quiere. Lo que se suma después también entra tildado (un repuesto que se valida con el asesor IA, las piezas elegidas de un kit). Con otra cotización vuelve a estar todo tildado. Con los repuestos tildados, el vendedor puede:
 
-- **Copiar para WhatsApp**: un renglón por repuesto con descripción, precio final con IVA y disponibilidad (y el total, si se tilda "Con total").
+- **Copiar para WhatsApp**: un renglón por repuesto con descripción, precio final con IVA y disponibilidad (y el total, si se tilda "Con total"). En promoción, el precio de siempre va tachado delante y el descuento entre paréntesis (ver 4d).
 - **Generar presupuesto**: abre a la derecha la hoja del presupuesto formal, copiada de la planilla del concesionario: logo del concesionario a la izquierda, número en el centro, logo Nissan a la derecha, franja con el nombre del concesionario y "Datos del cliente", dirección / CUIT / teléfono / e-mail, vehículo / VIN / nombre / patente / teléfono del cliente, fecha y validez, la tabla (descripción, unidades, precio unitario sin IVA, subtotal y total con IVA) y los totales. Con la hoja abierta, tildar o destildar una fila la suma o la saca, y la hoja sigue a la tabla: si en la fila se elige otro número (⇄ o el detalle del precio), se cambia la cantidad o el criterio de cotización, el renglón toma el número, el precio, el sugerido y la disponibilidad nuevos. Con el mismo número se respeta el precio que haya ajustado el vendedor. Los repuestos que entran tildados con la hoja abierta (validados, piezas de un kit o los de una cotización nueva) se suman como renglones, y un renglón que se armó antes de que llegaran el precio o el stock los toma cuando llegan.
 
 Todo se edita sobre la hoja: textos, cantidades, precio unitario sin IVA, total con IVA del renglón y el total general (que reparte el cambio entre los renglones en proporción). Al tocar un renglón aparece una fila de ajustes: −10 / −5 / +5 / +10 %, "De lista" (precio de la lista del concesionario), "Sugerido Nissan" (SUG con IVA), disponibilidad y ocultar, y una X roja en el margen izquierdo del renglón que lo saca del presupuesto (y lo destilda en la tabla). "Ocultar" cierra la fila hasta que se vuelve a tocar un renglón. Arriba de la hoja están los ajustes para todos los precios, un porcentaje libre y "Precios de lista" / "Sugeridos Nissan". La opción "Incluir N.º de pieza" agrega la columna. Se puede agregar un ítem a mano (ej. mano de obra) con el botón o con **Enter** en cualquier campo de un renglón, que agrega uno vacío debajo y deja el cursor en su descripción, como en una planilla. **Backspace** en la descripción de un renglón que no tiene nada (sin descripción, número ni precio) lo borra y deja el cursor al final del anterior. En los datos del cliente o del concesionario, Enter no agrega nada. Los renglones que quedan vacíos (sin descripción, número ni precio) se descartan solos al guardar. El precio de lista y el sugerido de cada renglón se guardan con el presupuesto, así siguen disponibles al reabrirlo. Si falta algo para guardar (hoja vacía, ítems sin descripción), aparece un aviso en el centro de la pantalla y los ítems incompletos quedan marcados en rojo.
@@ -447,6 +447,52 @@ concesionario y el **SUG**, el precio sugerido de Nissan. En pantalla se muestra
 - La estrategia de cotización (más caro, más barato con stock, etc.) ordena por el precio final
   con IVA que manda el backend; el front no recalcula precios. Como el margen es el mismo para
   todos los números de la organización, el orden entre candidatos no cambia con la fórmula.
+
+### 4c. Pantalla Precios — `/precios`
+
+Arriba, pestañas: **Lista y margen** (el margen y el criterio, con su aclaración en una «i»),
+**Promociones** (con `precios.gestionar`), **Mano de obra** (los precios del taller de la
+sucursal) y **Compañías** (lo acordado con cada aseguradora). Mano de obra y Compañías muestran
+los valores y se editan en las mismas ventanas que en Presupuestos, que siguen estando ahí. El
+resumen de la lista (archivo, fecha, cantidades y duplicados) sale solo, en un popup, la primera
+vez que cada usuario entra con una lista nueva (`resumen_visto` en `GET /precios/estado`, `POST
+/precios/resumen-visto`); después se abre con «Resumen de la lista». La plataforma ve la lista
+vigente y las cargas: la lista, los reemplazos y las promociones.
+
+### 4d. Promociones de Nissan — `/promociones`
+
+Nissan manda cada mes un Excel con los repuestos en promoción: número, descripción, PNC del mes,
+PNC con descuento y porcentaje. Lo carga la plataforma en Administración → Lista de precios
+(`POST /promociones/cargar`), una vez para todos, eligiendo la vigencia: el mes actual
+(recomendado) u otras fechas, los dos días incluidos. Las columnas se leen por posición (los
+títulos cambian cada mes) y el porcentaje se calcula de los dos costos. Una carga que se
+superpone con otra responde 409 (`promocion_superpuesta`) salvo que se pida reemplazarla. El
+resumen avisa cuántos no están en la lista, cuántos tienen otro PNC y cuántos tienen 60% o más.
+
+- **El costo baja siempre** (para quien ve costos y para el pedido a planta, que elige el más
+  barato con el costo en promoción). Si el PNC de la lista es el del Excel se usa el costo del
+  Excel; si la lista cambió en el mes, el mismo porcentaje sobre el PNC nuevo.
+- **El precio de venta baja solo si el concesionario lo habilita** (Precios → Promociones,
+  `PUT /promociones/concesionario`): «Igual que Nissan» o «Elegir el descuento» por repuesto
+  (`PUT /promociones/{id}/descuentos`; sin descuento propio, el de Nissan). El precio sale del
+  costo de lista (con margen) o del SUG y después se le aplica ese descuento: si saliera del
+  costo con descuento, el margen le pasaría al cliente todo el descuento sin que nadie lo
+  decida. Al elegir «Igual que Nissan» con repuestos de 60% o más, pide confirmar.
+- La configuración es del concesionario y una sucursal puede tener la suya
+  (`?sucursal=` y `DELETE /promociones/concesionario/sucursales/{id}`). El cotizador usa la de la
+  sucursal en la que se trabaja.
+- `POST /precios/consultar` manda `promocion` en cada precio: vigencia, el descuento aplicado al
+  precio (None si no se traslada), el precio sin promoción y, para quien ve costos, el descuento
+  de Nissan y el PNC sin promoción. `precio_final_con_iva` ya trae la promoción, así que los
+  criterios de cotización comparan el precio que se cobra.
+- En la tabla, el precio de siempre va tachado con el porcentaje; **Quitar** cotiza al precio de
+  siempre y **Aplicar** la vuelve a poner. Lo mismo en el renglón del presupuesto, que guarda la
+  promoción (`estimate_lines.promotion`): en la hoja va solo el precio con una nota «Precio
+  promocional hasta el …». Un precio puesto a mano la quita. WhatsApp tacha el precio de siempre:
+  `~$ 1.000,00~ $ 760,00 (Descuento del 24% por el mes de noviembre)`.
+- Cuando hay una promoción vigente que nadie revisó, a quien tiene `precios.gestionar` le sale un
+  aviso al entrar (`GET /promociones/aviso`). Con que un administrador abra la pestaña alcanza
+  (`POST /promociones/{id}/revisada`); «Más tarde» la esconde hasta cerrar el navegador.
 
 ### 5. Catálogo normalizado (418 repuestos)
 
