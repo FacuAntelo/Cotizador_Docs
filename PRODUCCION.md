@@ -82,6 +82,8 @@ tener presente. El resto queda como en `.env.example`.
 | `SERVER_PORT` | vacío (por defecto) | Vacío es 8000 en productivo (y 8001 en desarrollo). Tiene que coincidir con el túnel. |
 | `FRONTEND_DIST` | `../Cotizador_FE/dist` (por defecto) | El front compilado. Sin él, el backend no arranca. |
 | `CORS_ORIGINS` | `https://app.oemia.ar` | Con el front y la API en la misma dirección no hace falta CORS. Nunca `*` ni `http`. |
+| `ALLOWED_HOSTS` | `app.oemia.ar` | El backend atiende solo los pedidos que nombran ese sitio (y los de esta PC por su nombre local). Antes de ponerlo, ver «Sitios que se atienden». |
+| `MAX_BODY_KB` | Sin poner (1024) | Tamaño máximo de un pedido común a la API. Ver «Tamaño de los pedidos». |
 | `CREDENTIALS_KEY` | clave secreta | Cifra las cuentas de EPC, SAP, el localizador y los códigos de verificación. Si se pierde, cada usuario vuelve a cargar sus cuentas. Copia fuera de la PC. |
 | `ANTHROPIC_API_KEY` | clave secreta | La IA. |
 | `DATABASE_URL` | `cotizador_app` en la base `cotizador` | Solo filas, con Row Level Security. La escribe `scripts/preparar_postgres.py`. |
@@ -96,6 +98,8 @@ tener presente. El resto queda como en `.env.example`.
 | `LOG_LEVEL` | `INFO` | `DEBUG` llena el disco y muestra más de lo necesario. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Las trazas van al Grafana de esta PC (`docker-compose.yml`). |
 | `LLM_DAILY_BUDGET_USD` | `1` (el de `.env.example`) | Tope diario de la IA en dólares. Revisarlo cuando haya varios concesionarios cotizando. |
+| `LLM_ORG_HARD_BUDGET_USD` | Sin poner (3 veces el diario) | Tope diario de cada organización: al llegar, queda sin IA hasta el otro día. Ver OBSERVABILIDAD.md, «Tope de gasto diario». |
+| `GRAFANA_ADMIN_PASSWORD` | contraseña | La lee `docker-compose.yml`, no el backend: contraseña de `admin` en Grafana la primera vez que arranca con el volumen vacío. |
 | `VEHICLE_PARTS_DAYS` | Sin poner (180) | Días que se recuerdan los números cotizados de cada chasis desde la última consulta. |
 | `RECENT_NUMBERS_DAYS` | Sin poner (3) | Días del historial de números cotizados sin chasis. |
 | `ANTHROPIC_MAX_RETRIES` | Sin poner (4) | Reintentos cuando Anthropic falla de su lado (503, sobrecarga, conexión) antes de avisar que la IA no responde. |
@@ -127,6 +131,68 @@ Esto no se configura: está en el código y vale siempre que corresponde.
   usuario en Mis dispositivos, en lugar de la IP.
 - **Archivos del front:** los de `assets/` (con hash en el nombre) se guardan un año en caché;
   `index.html` y los íconos se revalidan en cada visita, así una versión nueva llega sola.
+- **Tamaño máximo de cada pedido** (`app/core/body_limit.py`): lo que se pasa se rechaza con
+  413 antes de leerlo, también sin sesión. Ver «Tamaño de los pedidos».
+
+### Tamaño de los pedidos
+
+FastAPI lee el cuerpo entero de un pedido antes de mirar la sesión y los límites de uso, y
+Cloudflare deja pasar hasta 100 MB. Sin un tope, alguien sin usuario podría llenar la memoria
+del backend con pedidos gigantes al login. Por eso cada ruta tiene un máximo, que se revisa
+antes de leer:
+
+| Qué | Rutas | Máximo | Configuración |
+|---|---|---|---|
+| Listas que se suben | `POST /precios/cargar`, `/compatibilidades/cargar`, `/promociones/cargar` | 15 MB + 1 MB del formulario | `MAX_UPLOAD_MB` |
+| Orden del seguro | `POST /presupuestos/{numero}/orden-seguro` | 10 MB + 1 MB | `MAX_INSURANCE_ORDER_MB` |
+| Foto del stock del taller | `PUT /dms/stock` | 20 MB | `MAX_DMS_SNAPSHOT_MB` |
+| Telemetría del front | `POST /telemetria` | 64 KB | `TELEMETRY_MAX_BYTES` |
+| Pedidos con el logo | `POST` y `PATCH /administracion/organizaciones`, `PUT /presupuestos/concesionario` | 1,5 MB del logo + el común | `MAX_LOGO_CHARS` en `app/schemas/estimates.py` |
+| Todo lo demás | | 1 MB | `MAX_BODY_KB` |
+
+- Si el pedido dice cuánto mide (`Content-Length`) y se pasa, recibe el 413 sin que se guarde
+  nada. Si no lo dice, se cuentan los bytes a medida que llegan y se rechaza al pasar el máximo.
+- Lo que sobra se lee y se tira, sin guardarlo en memoria, hasta 32 MB: si el backend
+  contestara con el navegador todavía mandando, la conexión se cortaría y el usuario vería un
+  error de red en vez del mensaje. Un pedido que declara más de 32 MB se rechaza sin leer nada
+  y se le corta la conexión.
+- El 413 trae el código `pedido_muy_grande` y queda en Monitoreo y en el log («Pedido
+  rechazado por tamaño»).
+- Los controles de cada ruta (`read_limited` en las subidas y el de `/telemetria`) siguen
+  estando: dan el mensaje preciso («El archivo supera los 15 MB») cuando se pasa por poco.
+
+**Para aceptar algo más grande en una ruta nueva** (por ejemplo, fotos de un repuesto o de un
+siniestro):
+
+1. Crear la configuración con el máximo, como `MAX_PHOTO_MB`, en `app/core/config.py` y en
+   `.env.example`.
+2. Agregar el renglón de la ruta a `ROUTE_LIMITS` en `app/core/body_limit.py`, con su método y
+   su dirección sin `/api`. Para un archivo en un formulario, con `_upload(...)`, que suma el
+   margen del formulario.
+3. En la ruta, leer el archivo con `read_limited` (`app/core/uploads.py`) y revisar que sea lo
+   que dice ser por sus primeros bytes, como `is_pdf` en `app/services/acceptance.py`. Una
+   imagen se revisa igual: JPEG empieza con `FF D8 FF`, PNG con `89 50 4E 47`, WebP con
+   `RIFF....WEBP`. No alcanza con la extensión ni con el tipo que declara el navegador.
+4. Al devolverla, mandar el tipo exacto (`image/jpeg`), nunca uno que venga del usuario. SVG no:
+   puede traer scripts.
+5. Dos cosas a pensar antes: dónde se guardan (hoy la orden del seguro va a la base; muchas
+   fotos conviene que vayan a disco o a un almacenamiento aparte) y un límite de uso para la
+   ruta en `app/core/rate_limit.py`, porque subir fotos sin parar llena el disco.
+6. No subir `MAX_BODY_KB` para que entren: ese máximo vale para todas las rutas, incluido el
+   login sin sesión.
+
+### Sitios que se atienden
+
+Con `ALLOWED_HOSTS`, el backend atiende solo los pedidos cuyo header `Host` nombra uno de esos
+sitios. Los pedidos a `127.0.0.1` o `localhost` pasan siempre, para revisar la salud desde la
+PC. Sirve contra una página cualquiera abierta en un navegador de la PC de productivo que haga
+apuntar su propio nombre a `127.0.0.1` para hablarle al backend sin pasar por Cloudflare.
+
+Vacío no revisa nada. Antes de ponerlo en productivo hay que confirmar con qué `Host` llegan los
+pedidos por el túnel: `cloudflared` manda el del sitio (`app.oemia.ar`) salvo que la ruta del
+túnel tenga configurado otro en «HTTP Host Header». Si quedara mal, todos los pedidos reciben
+400 y el log dice «pide el sitio '…', que no está en ALLOWED_HOSTS»: se corrige el valor o se
+vacía, y se reinicia.
 
 ### Lo que revisa al arrancar
 
@@ -233,6 +299,10 @@ el log del backend en `C:\OEMIA\Cotizador_BE\logs\`.
      `/api/salud` responda.
 - **Backend y front se mergean el mismo día** cuando un cambio necesita a los dos: si no, a la
   noche se publica una mitad.
+- **Antes de mergear a `main`, revisar las dependencias:** `uv audit --frozen` en el backend
+  (lee `uv.lock`; el comando todavía es experimental) y `npm audit` en el front. Lo que salga
+  en el front solo por herramientas de desarrollo (eslint, vitest) no llega a lo publicado,
+  pero se arregla igual con `npm audit fix`.
 - **Más adelante:** que GitHub Actions corra en cada push los tests, el typecheck y
   `npm run check:api` (que el front coincida con la API del backend), y que la tarea de la
   noche publique solo commits con todo en verde.
@@ -408,6 +478,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-16 | Revisión de seguridad (`PLAN_SEGURIDAD.md`), en la rama `menu-usuario`: tope de tamaño de los pedidos, `ALLOWED_HOSTS`, tope de IA por organización, el bloqueo ya no confirma la contraseña, una sesión se ata a la PC una sola vez y Grafana pide usuario. |
 | 2026-11-15 | Cloudflare manda la ubicación de cada pedido («Add visitor location headers»), para Mis dispositivos. La guarda la migración 0017 desde que se publique la rama `menu-usuario`. |
 | 2026-11-10 | `oemia.ar` lleva a la app (302, hasta que haya una web) y página de mantenimiento con un Worker de Cloudflare. |
 | 2026-11-10 | Repuestos consultados por chasis y la revisión de las candidatas del catálogo: la migración 0009 corre sola al arrancar. |

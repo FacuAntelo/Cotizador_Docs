@@ -230,7 +230,12 @@ agente del DMS, que usa su propio token.
 - **Fuerza bruta:** además del límite por IP que ya existe (`RATE_LIMIT_LOGIN`), bloqueo de
   15 minutos después de 5 fallos seguidos del mismo usuario; un Administrador puede
   desbloquearlo antes. Siempre el mismo mensaje («usuario o contraseña incorrectos») y nunca la
-  contraseña en el log.
+  contraseña en el log. Con el usuario bloqueado, el login responde «usuario bloqueado, probá
+  en N minutos» **con la contraseña bien o mal**, sin mirarla y sin sumar intentos: durante el
+  bloqueo no se puede seguir probando ni saber si se acertó. Quien hizo los 5 intentos se entera
+  de que el usuario existe; a cambio, el usuario de verdad sabe por qué no entra. Lo mismo vale
+  con la sesión abierta: confirmar la contraseña y cambiarla responden «usuario bloqueado», y
+  confirmar tiene además el límite del login (`RATE_LIMIT_LOGIN`, por usuario).
 - **Alta:** el admin crea el usuario con una contraseña temporal y el usuario la cambia al
   entrar. No hay mails: si alguien la olvida, un admin se la resetea.
 - **El administrador de plataforma se crea con un comando** en la PC del servidor
@@ -592,6 +597,10 @@ revisarlas de a una.
 - **El registro de DBSC se ofrece solo al loguearse** y vale 5 minutos: si se ofreciera en
   cualquier respuesta, alguien con la cookie copiada de un navegador sin DBSC podría atar la
   sesión a su PC.
+- **Una sesión se ata a la PC una sola vez.** Un segundo registro sobre una sesión ya atada se
+  rechaza (400) y queda en el log con la IP, como posible cookie robada: si no, quien copiara
+  la cookie corta podía registrar su propia clave y quedarse con la sesión. Los desafíos de
+  registro y los de renovación van separados: uno de renovación no sirve para registrar.
 - **DBSC solo anda con HTTPS.** En desarrollo (`http://localhost`) las sesiones quedan sin atar
   y usan la renovación con el token que cambia. Se prueba de verdad con el túnel, en la etapa 6.
 - **`MONITOR_ALLOWED_HOSTS` salió del `.env`**; entraron `CREDENTIALS_KEY` (se genera con

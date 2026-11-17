@@ -291,6 +291,16 @@ conviene apagarla.
 | `LLM_DAILY_BUDGET_USD` | 1 | Tope del día en USD; 0 = sin tope |
 | `LLM_BUDGET_WARN_RATIO` | 0.8 | Al 80 % avisa en el log y en las alertas |
 | `LLM_BUDGET_ACTION` | `asesor` | Al 100 %: `asesor` apaga solo el asesor (el modelo caro) y el matcher sigue; `todo` apaga toda la IA; `avisar` solo avisa |
+| `LLM_ORG_HARD_BUDGET_USD` | vacío (3 veces el diario) | Tope del día de **cada organización**: al llegar, toda la IA queda apagada para ella hasta el otro día, sea cual sea `LLM_BUDGET_ACTION`; 0 = sin tope |
+
+- **El tope por organización es el freno de emergencia.** El diario cuida el gasto de toda la
+  plataforma y, con `asesor`, deja el matcher andando. Sin el otro, un usuario (o quien le
+  robó la cuenta) podía gastar sin fin con el matcher, y una organización le apagaba el asesor
+  a las demás sin límite propio. Con el uso normal nadie lo toca: el asesor se apaga antes, al
+  llegar al diario. La cotización de esa organización responde 503 con «La IA llegó al límite
+  de gasto de hoy de tu concesionario…» y salta la alerta `gasto_ia_organizacion`.
+- Lo que gasta la plataforma sin organización (un administrador de plataforma probando) cuenta
+  solo para el tope diario.
 
 - **"Hoy"** es el día en la hora del negocio (`OBS_TIMEZONE`, Buenos Aires): el tope se
   reinicia a medianoche local.
@@ -486,6 +496,7 @@ login y del permiso `monitoreo.ver`.
 | `errores_servidor` | crítica | Más del 5 % de los requests fallaron en los últimos 15 min (con al menos 20 requests) | `ALERT_ERROR_RATE_PCT`, `ALERT_ERROR_RATE_WINDOW_MINUTES`, `ALERT_MIN_REQUESTS` |
 | `cotizaciones_lentas` | advertencia | El p95 de las cotizaciones pasó 20 s en la última hora (con al menos 5) | `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES` |
 | `gasto_ia` | advertencia / crítica | El gasto del día llegó al 80 % / 100 % del tope | `LLM_BUDGET_WARN_RATIO`, `LLM_DAILY_BUDGET_USD` |
+| `gasto_ia_organizacion:<id>` | crítica | Una organización llegó a su tope del día y quedó sin IA. Con uso normal no pasa: revisar en Monitoreo → Costos IA quién la usó | `LLM_ORG_HARD_BUDGET_USD` |
 | `login_epc`, `login_sap`, `login_localizador` | crítica | Fallaron los últimos 3 logins seguidos | `ALERT_LOGIN_FAILURES` |
 | `ingresos_fallidos` | advertencia | Hubo 20 ingresos fallidos al cotizador (contraseña o código mal, usuarios que no existen) en los últimos 15 min, sumando todas las organizaciones. Dice desde cuántas IPs: muchas es un ataque repartido. Cada intento ya lo frenan el límite por IP y el bloqueo del usuario; esto avisa que está pasando | `ALERT_USER_LOGIN_FAILURES` (0 la apaga), `ALERT_USER_LOGIN_WINDOW_MINUTES` |
 | `login_bloqueado_sap`, `login_bloqueado_localizador` | crítica | Se rechazó el usuario o la cuenta está bloqueada y se dejó de reintentar. **Avisa en el momento**, sin esperar la revisión | — |
@@ -568,8 +579,17 @@ mismo lugar. Apagadas no cuestan nada.
 1. En Docker Desktop, activar *Settings → General → Start Docker Desktop when you sign in*.
 2. Una sola vez, desde `Cotizador_BE`: `docker compose up -d`. Después vuelve solo cada vez
    que arranca Docker Desktop (`restart: unless-stopped`).
-3. Entrar a http://localhost:3000 con `admin` / `admin` y cambiar la contraseña, como pide
-   Grafana la primera vez.
+3. Entrar a http://localhost:3000 con `admin` y la contraseña de `GRAFANA_ADMIN_PASSWORD` del
+   `.env` (sin esa variable, `admin` / `admin`: cambiarla ahí mismo, como pide Grafana la
+   primera vez).
+
+La imagen está pensada para desarrollo y de fábrica deja entrar a cualquiera como
+administrador, sin usuario. El compose lo apaga (`GF_AUTH_ANONYMOUS_ENABLED=false`): se entra
+con usuario y contraseña. Recibir trazas en el 4318 no cambia. En un Grafana que ya estaba
+andando, el cambio vale recién al recrear el contenedor (`docker compose up -d`), y la
+contraseña de `admin` es la que ya tenía guardada en el volumen: `GRAFANA_ADMIN_PASSWORD` solo
+se usa la primera vez, con el volumen vacío. Si no se sabe cuál es, se pone una nueva con
+`docker exec -it -w /otel-lgtm/grafana -e GF_PATHS_DATA=/data/grafana/data cotizador-observabilidad-grafana-1 ./bin/grafana cli admin reset-admin-password NUEVA`.
 
 Solo escucha en esta PC (`127.0.0.1:3000` y `127.0.0.1:4318`). Los datos quedan en el
 volumen `grafana_data` y Tempo guarda las trazas 14 días. La versión de la imagen está fija
@@ -717,7 +737,7 @@ Todas en el `.env` del backend (con su explicación en `.env.example` y en el do
 |---|---|
 | Logs | `LOG_LEVEL`, `LOG_FORMAT`, `LOG_FILE`, `LOG_RETENTION_DAYS`, `LOG_QUIET_LOGGERS` |
 | Requests | `OBS_SLOW_REQUEST_SECONDS`, `OBS_EXCLUDED_PATHS`, `OBS_QUIET_PATHS`, `OBS_WRITER_BATCH_SIZE`, `OBS_WRITER_FLUSH_SECONDS`, `OBS_WRITER_MAX_QUEUE`, `OBS_TIMEZONE`, `CORS_ORIGINS` |
-| Costos de la IA | `ANTHROPIC_CACHE_TTL`, `LLM_DAILY_BUDGET_USD`, `LLM_BUDGET_WARN_RATIO`, `LLM_BUDGET_ACTION`, `LLM_PRICES_FILE` |
+| Costos de la IA | `ANTHROPIC_CACHE_TTL`, `LLM_DAILY_BUDGET_USD`, `LLM_BUDGET_WARN_RATIO`, `LLM_BUDGET_ACTION`, `LLM_ORG_HARD_BUDGET_USD`, `LLM_PRICES_FILE` |
 | Límites de uso | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_IA`, `RATE_LIMIT_INTEGRACIONES`, `RATE_LIMIT_ESCRITURAS`, `RATE_LIMIT_TELEMETRIA`, `RATE_LIMIT_LOGIN`, `MAX_CONCURRENT_QUOTES`, `MAX_CONCURRENT_QUOTES_RETRY_SECONDS` |
 | Recursos | `LOOP_LAG_CHECK_SECONDS`, `LOOP_LAG_WARN_MS`, `RUNTIME_SAMPLE_SECONDS` |
 | Alertas | `ALERTS_ENABLED`, `ALERTS_CHECK_SECONDS`, `ALERTS_REPEAT_MINUTES`, `ALERT_ERROR_RATE_PCT`, `ALERT_ERROR_RATE_WINDOW_MINUTES`, `ALERT_MIN_REQUESTS`, `ALERT_QUOTE_P95_SECONDS`, `ALERT_QUOTE_WINDOW_MINUTES`, `ALERT_QUOTE_MIN_SAMPLES`, `ALERT_LOGIN_FAILURES`, `ALERT_LOOP_LAG_MS`, `ALERT_DMS_BUSINESS_HOURS`, `ALERT_DMS_BUSINESS_DAYS` |
