@@ -17,13 +17,26 @@ habla de IA):
 |---|---|---|
 | Identificado | Elipse verde, siempre con tilde | Va directo al EPC, sin IA |
 | Número de pieza | Elipse azul, con tilde si la lista de precios lo tiene | Se verifica en el EPC para el chasis, como «Agregar repuesto» |
-| Sin identificar | Elipse de borde punteado | Es lo único que recibe el matcher |
+| Con opciones | Elipse ámbar, borde lleno y más grueso, con la flecha de un desplegable | Si no se elige nada, como el sin identificar |
+| Sin identificar | Elipse rojo de borde punteado | Es lo único que recibe el matcher |
 | Ya cotizado | El mismo elipse | No se vuelve a cotizar |
 
+- **Con opciones** es un repuesto que no se identificó pero para el que el predictivo tiene
+  qué ofrecer: lo que da corregir las palabras mal escritas («guadabaros di» → guardabarros
+  delantero izquierdo) o los repuestos cuyas palabras empiezan con lo escrito («volante» → el
+  de dirección y el del motor). Se distingue del sin identificar en las tres señales, no solo
+  en el color. Al tocarlo se abre su desplegable, con «En lugar de «…»» arriba, y lo elegido
+  queda en su lugar, cada repuesto en su elipse. Si lo corregido son varios repuestos
+  («guadabaros di con guqrdaplast»), van marcados y Enter los acepta juntos. Esc, escribir o
+  salir del campo lo cierra. Lo ya cotizado no se ofrece. Las opciones salen de
+  `optionsFor` en `resolver.ts`; el título del elipse es «Elegí cuál es», sin hablar de la IA.
+- **Al pegar, todo queda en elipses**, también el último repuesto, y el cursor queda listo
+  para seguir. Cada renglón pegado es un repuesto. Es para pegar el pedido del cliente tal
+  cual, sin tiempo de elegir del predictivo.
 - **Un texto que nombra varios repuestos se abre en un elipse por repuesto** al cerrarlo,
-  como una abreviatura: «2 puertas del» queda «2 puerta delantera derecha» y «2 puerta
-  delantera izquierda». Solo si todos son del catálogo y cada nombre vuelve a dar ese mismo
-  repuesto; lo ya cotizado no se abre (cambiaría su clave y se volvería a cotizar).
+  como una abreviatura: «puertas del» queda «puerta delantera derecha» y «puerta delantera
+  izquierda». Solo si todos son del catálogo y cada nombre vuelve a dar ese mismo repuesto,
+  con su cantidad; lo ya cotizado no se abre (cambiaría su clave y se volvería a cotizar).
 - **El mismo repuesto no entra dos veces**: mismo texto, mismas piezas con la misma cantidad
   o mismo número. Queda el primero y el repetido se descarta sin aviso.
 - **Retroceso con el campo vacío no hace nada**: para sacar un repuesto está su cruz.
@@ -36,12 +49,16 @@ muestra.
 
 Qué reconoce, en este orden:
 
-1. **Un número de pieza** (5 + 5 caracteres, con o sin guion, con algún dígito), si la lista
-   de precios lo tiene: se consulta `GET /precios/repuestos` por cada uno. Si la lista no lo
-   tiene, es «Sin identificar» y al cotizar va como texto, no como fila. Sin lista cargada o si
-   la consulta falla, se toma como número, como antes.
-2. **La cantidad escrita**: «2 pdi», «x4 bujías», «filtro de aceite x3». Otro número en el
-   texto lo lee la IA.
+1. **Un número de pieza** (5 + 5 caracteres, juntos o separados por un guion o un espacio, con
+   algún dígito), si la lista de precios lo tiene: se consulta `GET /precios/repuestos` por
+   cada uno. Si la lista no lo tiene, es «Sin identificar» y al cotizar va como texto, no como
+   fila. Sin lista cargada o si la consulta falla, se toma como número, como antes. Las
+   palabras no se juntan: «bieletas x2» no es un número aunque sin espacios tenga diez.
+2. **La cantidad escrita**: «2 pdi», «x4 bujías», «filtro de aceite x3». Es de cada repuesto:
+   en «guardaplast y bieletas x2» el x2 es solo de las bieletas. Si el pedido no dice el lado y
+   van las dos variantes, la cantidad se reparte: «2 bieletas» o «2 puertas del» son una de
+   cada lado; si no se reparte parejo («3 bieletas»), lo lee la IA. Otro número en el texto lo
+   lee la IA.
 3. **El pedido entero**, si es una abreviatura del usuario, algo que el concesionario ya
    resolvió (alias aprendido) o un alias del catálogo («pdi»). Las abreviaturas del usuario
    mandan sobre lo demás.
@@ -52,15 +69,27 @@ Qué reconoce, en este orden:
 5. **Posición y lado**: delantero / del, trasero / tras, superior / sup, inferior / inf,
    izquierdo / izq, derecho / der, y di, dd, ti, td. «del» es «delantero» solo después de la
    pieza y si no sigue otra palabra de ella («tapa del motor» es una preposición).
-6. **«X con Y»**: Y hereda la pieza y la posición de X. «paragolpes del con soportes» son el
-   paragolpes delantero y sus dos soportes.
+6. **«X con Y» y «X y Y»**: dos repuestos en uno, como el cliente los lista. Si Y solo no es
+   un repuesto, hereda la pieza y la posición de X: «paragolpes del y soportes» y «paragolpes
+   del con soportes» son el paragolpes delantero y sus dos soportes. Con «con», Y va además en
+   la posición y el lado de X aunque se reconozca solo: «guardabarros di con guardaplast» es el
+   guardaplast delantero izquierdo. Con «y» son independientes: en «guardaplast y bieletas»,
+   las bieletas no heredan nada. Lo que Y dice manda: en «puerta del izq y der», «der» es la
+   delantera derecha.
 7. **«ambos», «los dos», «todos los»**: van todas las variantes. De un repuesto que el
    catálogo no separa por lado («ambos amortiguadores traseros») son dos unidades, y el
    backend revisa si el vehículo lleva dos piezas distintas, como antes.
 
 **Nunca supone lado ni posición**: si el catálogo separa el repuesto y el pedido no lo dice,
 van todas las variantes con la nota «No indicaste el lado: se cotizan todas las variantes».
-«puerta» sola son las cuatro.
+«puerta» sola son las cuatro. Cuando una posición es la de casi siempre, se dice en el
+catálogo con un alias sin posición en esas entradas: «bieleta» está en las dos de suspensión
+(las delanteras), así que «bieletas» son la izquierda y la derecha y la trasera va solo si se
+pide (migración 0019).
+
+**Palabras mal escritas**: nunca se identifican solas. Se corrige una letra en palabras de
+cinco a siete, dos desde las ocho, y solo si hay una sola palabra del catálogo parecida; lo
+corregido queda **con opciones**, para confirmarlo con un clic.
 
 ## Al cotizar
 
@@ -181,7 +210,9 @@ recibe de la migración 0015; una nueva, al sembrar el catálogo (`SEED_GLOBAL_A
   cotizar.
 - **Un plural solo** de un repuesto sin lado («amortiguadores traseros», sin «ambos») lo lee
   la IA: no se sabe si son dos unidades.
-- **No tolera errores de tipeo**: «paragolpe» sí (singular), «paragolpez» no.
+- **Los errores de tipeo no se identifican solos**: «paragolpez» queda con opciones, a
+  confirmar. Las palabras de menos de cinco letras no se corrigen, y una palabra con dos
+  parecidas del catálogo tampoco.
 - **Lo ambiguo no tiene estado propio**: lo que nombra piezas distintas lo lee la IA, que lo
   marca ambiguo como antes.
 - **Los alias aprendidos son de cada concesionario.** No hay pantalla para que la plataforma
