@@ -35,6 +35,34 @@ publicarlo**; cómo funciona, en `CONTEXT.md` («Cotizar sin chasis»).
   tabla, 390 px y tema oscuro. El backend de desarrollo tiene que estar reiniciado: sin eso no
   hay `/numeros/recientes` ni búsqueda desde 1 carácter.
 
+### 22. Pegar el pedido del cliente tal cual
+
+Pedido el 17/11/2026. **Hecho en `pegar-pedido` el 17/11/2026 (BE, FE y Docs), falta
+publicarlo**; cómo funciona, en `RESOLVEDOR.md`. El repuestero copia el pedido como lo escribió
+el cliente y lo pega, sin tiempo de elegir del predictivo. Ejemplo real: «paragolpes del y
+soportes, guadabaros di con guqrdaplast y bieletas x2».
+
+Lo que se hizo, con lo decidido:
+
+- **Elipse «con opciones»**: lo que no se identificó pero el predictivo tiene qué ofrecer (un
+  error de tipeo, una pieza ambigua). Ámbar, borde lleno de 2px y la flecha de un desplegable,
+  contra el rojo punteado del sin identificar. Al tocarlo se elige de su desplegable; si no se
+  toca, va a la IA como lo sin identificar. El título dice «Elegí cuál es», sin hablar de la IA.
+- **Errores de tipeo**: nunca quedan verdes solos, quedan con opciones.
+- **La «y» separa repuestos** como la coma, y «con» pasa la posición y el lado a lo que va con
+  la pieza. La cantidad es de cada repuesto.
+- **Al pegar, todo queda en elipses**, también el último.
+- **«bieletas x2» ya no es un número de pieza**: las palabras no se juntan.
+- **Bieletas**: sin más son las delanteras, izquierda y derecha, por alias en el catálogo
+  (`SEED_ALIASES` y la migración 0019, que los carga en productivo al publicar). Un alias
+  puede estar en los dos lados de un repuesto, no en dos repuestos.
+- **Cantidad con el lado sin decir**: se reparte, «2 bieletas» son una de cada lado.
+
+Probado en pantalla el 17/11/2026 con la base de desarrollo: pegar el ejemplo, elegir del
+desplegable con Enter, Esc, tema claro y oscuro y 390 px. Sin probar: cotizarlo de punta a punta
+(desarrollo no tiene cuenta de EPC) y con el catálogo de productivo, que puede tener otros
+nombres y alias que el inicial.
+
 ## Integraciones
 
 ### 16. Confirmar en productivo que dos usuarios con la misma cuenta de EPC no se molestan
