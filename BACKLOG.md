@@ -63,6 +63,31 @@ desplegable con Enter, Esc, tema claro y oscuro y 390 px. Sin probar: cotizarlo 
 (desarrollo no tiene cuenta de EPC) y con el catálogo de productivo, que puede tener otros
 nombres y alias que el inicial.
 
+### 23. El asesor valida en la fila de la tabla, no en una tarjeta abajo
+
+Pedido el 17/11/2026. Hoy lo que resuelve el asesor va resumido en la tabla («Sugerido por IA ·
+falta validar» y «Ver en Asesor IA») y todo lo demás está en una tarjeta debajo: poco intuitivo.
+Se eligió entre tres maquetas (A, B y C) mostradas en el chat; quedan A y C:
+
+- **Una sola sugerencia (A)**: el número sugerido entra a la tabla como una fila más, con su
+  disponibilidad y su precio. Se distingue por la marca «IA» en rojo (el rojo es solo lo que
+  propone el asesor) y una línea debajo del nombre: «Sugerido por IA · confianza media ·
+  pediste «…»». En la columna de acciones, Validar, Descartar y Corregir IA. «¿Por qué?»
+  despliega debajo de la fila «Cómo lo interpretó» y «Resultado en el EPC». «Probablemente no
+  la lleva» va en esa misma línea roja.
+- **Varias opciones o un kit (C)**: el pedido queda como encabezado de un grupo, con la
+  pregunta para el cliente, y debajo una sub-fila por pieza posible con su número,
+  disponibilidad y precio, para comparar antes de elegir. **Elegir ya valida**: un clic, sin
+  Validar aparte, y se aprende el alias como hoy al validar. En un kit cada pieza lleva casilla
+  y «Agregar N» suma las marcadas.
+- **Descartar no saca la fila**: queda como «Descartado», con Corregir IA para indicarle al
+  asesor qué pieza es y con una opción para **reemplazarla por un número de pieza** escrito a
+  mano (como «Agregar repuesto»: se busca en la lista de precios y se verifica en el EPC).
+- **Buscando y No encontrado** también quedan en su fila: «Consultando «…»…» con el spinner, y
+  «No encontrado» con Corregir IA y el reemplazo por número.
+- **Corregir IA** abre su formulario debajo de la fila, como ya pasa con los identificados.
+- La tarjeta y la sección del asesor debajo de la tabla desaparecen.
+
 ## Integraciones
 
 ### 16. Confirmar en productivo que dos usuarios con la misma cuenta de EPC no se molestan
