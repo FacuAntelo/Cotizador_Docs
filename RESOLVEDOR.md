@@ -27,7 +27,7 @@ habla de IA):
   de dirección y el del motor). Se distingue del sin identificar en las tres señales, no solo
   en el color. Al tocarlo se abre su desplegable, con «En lugar de «…»» arriba, y lo elegido
   queda en su lugar, cada repuesto en su elipse. Si lo corregido son varios repuestos
-  («guadabaros di con guqrdaplast»), van marcados y Enter los acepta juntos. Esc, escribir o
+  («guadabaros di con guqrdaplast»), van marcados y Tab los acepta juntos. Esc, escribir o
   salir del campo lo cierra. Lo ya cotizado no se ofrece. Las opciones salen de
   `optionsFor` en `resolver.ts`; el título del elipse es «Elegí cuál es», sin hablar de la IA.
 - **Al pegar, todo queda en elipses**, también el último repuesto, y el cursor queda listo
@@ -126,18 +126,23 @@ corregido queda **con opciones**, para confirmarlo con un clic.
   una sola palabra que no nombran ninguna pieza («pdi»).
 - **Sugerencias**: hasta cuatro repuestos cuyas palabras empiezan con lo escrito, primero los
   que más cotiza el concesionario. La palabra que se está escribiendo nunca se ignora: «para»
-  es el principio de «paragolpes». `Enter` o `Tab` acepta, `↑` `↓` elige, `→` marca y `←`
-  desmarca (y `Enter` o `Tab` aceptan las marcadas), `Shift+Enter` o `Shift+Tab` acepta todas,
-  `Esc` cierra. Para no quitarle el cursor al texto, `→` marca solo con el cursor al final y `←`
+  es el principio de «paragolpes». `Tab` acepta, `↑` `↓` elige, `→` marca y `←`
+  desmarca (y `Tab` acepta las marcadas), `Shift+Tab` acepta todas, `Esc` cierra. Para no quitarle el cursor al texto, `→` marca solo con el cursor al final y `←`
   desmarca solo si la resaltada está marcada; si no, mueven el cursor (`arrowMark`). Con el
   mouse, clic en el nombre acepta y clic en la casilla (o Ctrl+clic) marca.
 - La opción que coincide entera con lo escrito también se ofrece. **Ctrl+Backspace** es
   «Limpiar», en los dos recuadros.
-- **Enter y Tab** son la misma tecla, en orden: expanden la abreviatura escrita; si hay
-  sugerencias, aceptan (las marcadas, si hay); si no, cierran lo escrito como un elipse. Para
-  cerrar lo escrito tal cual con sugerencias a la vista, primero `Esc`. Con el campo vacío, Tab
-  pasa al siguiente control. Lo mismo en el recuadro de los números de pieza, donde aceptar ya
-  es cotizar. Decide `keyAction` en `requestClosing.ts`.
+- **Tab**, en orden: expande la abreviatura escrita; si hay sugerencias, acepta (las marcadas,
+  si hay); si no, cierra lo escrito como un elipse. Con el campo vacío pasa al siguiente
+  control. **Enter no acepta sugerencias** (molestaba al escribir de corrido, 19/11/2026): con
+  texto lo cierra tal cual como un elipse, y con el campo vacío cotiza (como Ctrl+Enter, si
+  hay algo para cotizar). Lo mismo en el recuadro de los números de pieza, donde aceptar con
+  Tab ya es cotizar. Decide `keyAction` en `requestClosing.ts`.
+- **«espejo retrovisor»** sin lado no es solo los de puerta: queda «con opciones» entre el
+  interior (ESPEJO RETROVISOR CENTRAL (INTERIOR), familia 96321) y los dos de puerta. Los de
+  puerta ya no tienen el alias «espejo retrovisor derecho/izquierdo»; «retrovisor derecho» e
+  «izquierdo» siguen. Lo cambia la migración 0020, que también suma TABLERO DE INSTRUMENTOS
+  (24810).
 - **Números de pieza**: si el catálogo no sugiere nada y lo escrito parece el principio de un
   número (5 caracteres o más, con algún dígito), se ofrecen hasta seis de la lista de precios,
   con su descripción. Es la misma búsqueda que «Agregar repuesto».

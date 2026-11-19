@@ -167,7 +167,7 @@ concesionario lea de ahí (por ejemplo, «mis cotizaciones» o «mi gasto de IA�
    `grep -rn "RequestLogRecord\|LLMCallRecord\|QuoteRunRecord\|FrontendEventRecord\|DependencyEventRecord" app`.
    Lo que escriba con la sesión del pedido tiene que tener la organización puesta
    (`app/database/tenant.py`) o pasar al usuario del sistema.
-3. **Una migración nueva** (la `0019` ya es la de los alias de las bieletas), copiando la forma de `0007_row_level_security.py`: en cada una de las
+3. **Una migración nueva** (la `0019` es la de los alias de las bieletas y la `0020`, la del espejo interior y el tablero), copiando la forma de `0007_row_level_security.py`: en cada una de las
    seis tablas, `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL SECURITY`, y una política para
    `cotizador_app` con `organization_id = current_setting('app.organization_id')::bigint` en
    `USING` y en `WITH CHECK`. Las filas sin organización (pedidos sin sesión) quedan solo para

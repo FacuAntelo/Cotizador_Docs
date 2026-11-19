@@ -65,8 +65,30 @@ nombres y alias que el inicial.
 
 ### 23. El asesor valida en la fila de la tabla, no en una tarjeta abajo
 
-Pedido el 17/11/2026. Hoy lo que resuelve el asesor va resumido en la tabla («Sugerido por IA ·
-falta validar» y «Ver en Asesor IA») y todo lo demás está en una tarjeta debajo: poco intuitivo.
+Pedido el 17/11/2026. **Hecho en `asesor-en-fila` el 19/11/2026 (BE, FE y Docs), falta
+publicarlo.** Probado en pantalla con el EPC y el asesor simulados (un proxy local con las
+cuatro respuestas): marcar tocando la fila, agregar varias, cambiar elección, rechazar,
+agregar el kit, «¿Por qué?», descartar y reemplazar por número, en tema claro y oscuro y a
+390 px. Sin probar con el asesor real.
+
+Ajustes pedidos el 19/11/2026 al probarlo, ya hechos:
+
+- **Para elegir**: el grupo lleva un borde punteado ámbar animado y tres puntos que laten
+  (quietos con movimiento reducido), y «N.º a confirmar» en lugar de «—». Tocar la fila la
+  marca y se pueden marcar varias; el botón del encabezado dice «Rechazar opciones» (rojo) sin
+  nada marcado y «Agregar N» (verde) con algo. Rechazar deja «No encontrado». Lo agregado lleva
+  «Cambiar elección», que vuelve al grupo en el lugar del pedido.
+- **Indicar el número de pieza** va junto a la descripción, como botón, no al final de la fila.
+- **Historial del chasis**: cerrado de entrada, con el título «N repuestos cotizados
+  previamente para este chasis»; se abre tocándolo.
+- **Enter no acepta del desplegable**: solo Tab. Con texto cierra el elipse tal cual; con el
+  recuadro vacío cotiza.
+- **Catálogo** (migración 0020): ESPEJO RETROVISOR CENTRAL (INTERIOR), 96321, y TABLERO DE
+  INSTRUMENTOS, 24810. «espejo retrovisor» ya no da solo los de puerta: queda para elegir. Si
+  en productivo el tablero ya estaba con esa familia, la migración no lo duplica y lo de que
+  no aparecía en el predictivo tendría otra causa (sin verificar: no se pudo leer esa base). Antes, lo que resolvía el asesor
+iba resumido en la tabla («Sugerido por IA · falta validar» y «Ver en Asesor IA») y todo lo
+demás estaba en una tarjeta debajo: poco intuitivo.
 Se eligió entre tres maquetas (A, B y C) mostradas en el chat; quedan A y C:
 
 - **Una sola sugerencia (A)**: el número sugerido entra a la tabla como una fila más, con su
