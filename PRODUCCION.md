@@ -292,7 +292,9 @@ Hecho el 19 de noviembre de 2026. **`main` es el código de productivo**: lo que
    - reinicia el backend y espera hasta 4 minutos a que `/api/salud` responda con el proceso
      nuevo y la página pida el front recién compilado;
    - si anduvo, pone el tag con la fecha (`2026.11.19`, o `2026.11.19.2` si ya hubo uno ese
-     día) en los dos repos y lo sube a GitHub;
+     día) en los dos repos y lo sube a GitHub. Al llegar el tag, GitHub Actions
+     (`.github/workflows/release.yml`) crea el **Release** de cada repo, con los commits desde
+     la publicación anterior: ahí se ve qué salió cada noche;
    - si no anduvo, vuelve el código a la versión anterior, recompila y reinicia. **Las
      migraciones no se deshacen solas**: el log dice qué respaldo restaurar si hace falta.
 3. Si la PC estaba apagada a las 3, no publica al prenderla (sería en horario de atención):
