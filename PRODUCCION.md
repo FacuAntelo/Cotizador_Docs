@@ -268,44 +268,96 @@ el log del backend en `C:\OEMIA\Cotizador_BE\logs\`.
 
 ## Publicar una versión nueva
 
-*Pendiente.* Acordado el 9 de noviembre de 2026:
+Hecho el 19 de noviembre de 2026. **`main` es el código de productivo**: lo que se mergea a
+`main` se publica esa noche, si los tests pasan. Lo que no está listo queda en su rama.
 
-- **`main` es el código de productivo.** Lo que se mergea a `main` se publica; lo que no está
-  listo queda en su rama.
-- **Se publica solo, de noche**, no en cada merge: reiniciar en horario de atención corta las
-  cotizaciones en curso y vuelve a loguear EPC y SAP, y si algo sale mal le pega a todos a la
-  vez sin nadie mirando. De noche hay tiempo de arreglarlo antes de abrir.
-- **Lo hace una tarea programada en la PC de productivo** (`publicar.ps1`, a las 3 de la mañana
-  salvo que se elija otro horario), que sale a buscar los cambios: nada de afuera entra a la PC.
-  Si `main` no cambió en el backend ni en el front, no hace nada. Si cambió:
-  1. respaldo de la base (las migraciones no se deshacen solas);
-  2. baja el código nuevo, instala las dependencias exactas y compila el front;
-  3. reinicia el backend y revisa que `/api/salud` responda;
-  4. si no responde, vuelve a la versión anterior y lo deja en el log.
-- **Lo urgente, a mano:** `publicar.ps1 -Ahora`.
-- **Mientras no esté `publicar.ps1`**, a mano (así se publicaron el 10 de noviembre el arreglo
-  de Precios y el front tipado con el contrato del backend):
-  1. `git pull --ff-only origin main` en `C:\OEMIA\Cotizador_BE` y `C:\OEMIA\Cotizador_FE`
-     (`uv sync --frozen --extra otel` si cambió `uv.lock`, `npm ci` si cambió
-     `package-lock.json`).
-  2. `npm run build` en el front, guardando antes `dist\assets` y devolviendo después los
-     archivos viejos: el backend lee `index.html` **al arrancar** y lo tiene en memoria, así
-     que hasta reiniciarlo sigue pidiendo los archivos de la versión anterior (sin ellos, la
-     página queda en blanco).
-  3. Reiniciar el backend (PowerShell como administrador; la tarea lo levanta en menos de un
-     minuto):
-     `Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
-  4. Revisar que `https://app.oemia.ar/` pida el `assets/index-….js` nuevo y que
-     `/api/salud` responda.
-- **Backend y front se mergean el mismo día** cuando un cambio necesita a los dos: si no, a la
-  noche se publica una mitad.
-- **Antes de mergear a `main`, revisar las dependencias:** `uv audit --frozen` en el backend
-  (lee `uv.lock`; el comando todavía es experimental) y `npm audit` en el front. Lo que salga
-  en el front solo por herramientas de desarrollo (eslint, vitest) no llega a lo publicado,
-  pero se arregla igual con `npm audit fix`.
-- **Más adelante:** que GitHub Actions corra en cada push los tests, el typecheck y
-  `npm run check:api` (que el front coincida con la API del backend), y que la tarea de la
-  noche publique solo commits con todo en verde.
+**Cómo funciona:**
+
+1. En cada push a `main`, GitHub Actions corre los tests de cada repo
+   (`.github/workflows/tests.yml`): en el backend ruff y la suite completa con un Postgres 18;
+   en el front typecheck, lint, tests y build. Si pasan, mueve la rama **`publicable`** a ese
+   commit. `npm run check:api` no corre allá (necesita el backend, que es otro repo privado):
+   se corre en la PC antes de pushear.
+2. A las 3 de la mañana, la tarea programada **«OEMIA publicar»** corre
+   `C:\OEMIA\Cotizador_BE\scripts\publicar.ps1`, que sale a buscar los cambios por SSH (nada
+   de afuera entra a la PC):
+   - publica solo si en el backend **y** en el front `publicable` está en el mismo commit que
+     `main`. Si alguno tiene commits sin tests en verde, esa noche no publica nada (nunca sale
+     una mitad) y lo deja en el log;
+   - si no hay nada nuevo, termina sin tocar nada;
+   - respalda la base con `pg_dump` en `C:\OEMIA\respaldos\cotizador_publicar_*.dump`
+     (quedan los últimos 10; los respaldos hechos a mano no se borran);
+   - baja el código, corre `uv sync` si cambió `uv.lock` y `npm ci` si cambió
+     `package-lock.json`, y compila el front guardando los archivos viejos;
+   - reinicia el backend y espera hasta 4 minutos a que `/api/salud` responda con el proceso
+     nuevo y la página pida el front recién compilado;
+   - si anduvo, pone el tag con la fecha (`2026.11.19`, o `2026.11.19.2` si ya hubo uno ese
+     día) en los dos repos y lo sube a GitHub;
+   - si no anduvo, vuelve el código a la versión anterior, recompila y reinicia. **Las
+     migraciones no se deshacen solas**: el log dice qué respaldo restaurar si hace falta.
+3. Si la PC estaba apagada a las 3, no publica al prenderla (sería en horario de atención):
+   espera a la noche siguiente.
+
+**El log:** `C:\OEMIA\Cotizador_BE\logs\publicar-AAAA-MM.log`.
+
+**A mano** (urgente, o para probar), en PowerShell como administrador:
+
+```powershell
+C:\OEMIA\Cotizador_BE\scripts\publicar.ps1 -Prueba   # dice qué haría, sin cambiar nada
+C:\OEMIA\Cotizador_BE\scripts\publicar.ps1           # publica ya
+```
+
+Los tests tienen que estar en verde igual: un hotfix es mergear a `main`, esperar a que GitHub
+Actions termine (unos 8 minutos) y correr el script.
+
+**Para dejarlo andando (una sola vez):**
+
+1. **Claves SSH**, una por repo, con el usuario de Windows dueño de `C:\OEMIA` (PowerShell
+   común):
+   ```powershell
+   ssh-keygen -t ed25519 -f "$HOME\.ssh\oemia_be" -N '""' -C "oemia-productivo-backend"
+   ssh-keygen -t ed25519 -f "$HOME\.ssh\oemia_fe" -N '""' -C "oemia-productivo-front"
+   ```
+2. En GitHub, en cada repo: **Settings → Deploy keys → Add deploy key**, con el contenido del
+   `.pub` correspondiente y **Allow write access** tildado (hace falta para subir el tag).
+3. En `$HOME\.ssh\config`:
+   ```
+   Host github-oemia-be
+     HostName github.com
+     User git
+     IdentityFile ~/.ssh/oemia_be
+     IdentitiesOnly yes
+
+   Host github-oemia-fe
+     HostName github.com
+     User git
+     IdentityFile ~/.ssh/oemia_fe
+     IdentitiesOnly yes
+   ```
+4. Los repos de productivo pasan a SSH y firman los tags con un nombre propio:
+   ```powershell
+   git -C C:\OEMIA\Cotizador_BE remote set-url origin git@github-oemia-be:FacuAntelo/Cotizador_BE.git
+   git -C C:\OEMIA\Cotizador_FE remote set-url origin git@github-oemia-fe:FacuAntelo/Cotizador_FE.git
+   ssh -T git@github-oemia-be   # la primera vez pregunta por la huella de GitHub: «yes»
+   ssh -T git@github-oemia-fe
+   git -C C:\OEMIA\Cotizador_BE config user.name "OEMIA productivo"
+   git -C C:\OEMIA\Cotizador_BE config user.email "productivo@oemia.local"
+   git -C C:\OEMIA\Cotizador_FE config user.name "OEMIA productivo"
+   git -C C:\OEMIA\Cotizador_FE config user.email "productivo@oemia.local"
+   ```
+5. **La tarea**, en PowerShell como administrador y con ese mismo usuario:
+   ```powershell
+   C:\OEMIA\Cotizador_BE\scripts\publicar.ps1 -Registrar
+   ```
+   Queda todos los días a las 3, con el mismo usuario que el backend, aunque nadie haya
+   iniciado sesión (`S4U`), y con privilegios altos: el backend corre en la sesión 0 y sin
+   ellos no se lo puede cerrar.
+6. **Probarla:** `publicar.ps1 -Prueba`. Tiene que decir qué publicaría, o que no hay nada
+   nuevo. Si dice que main todavía no tiene los tests en verde, GitHub Actions no terminó (o
+   falló) sobre ese commit: se mira en la pestaña Actions del repo.
+
+Las claves de despliegue con escritura también podrían pushear a `main`: si la PC se
+compromete, se borran desde GitHub (Settings → Deploy keys) y no queda ningún otro acceso.
 
 ## Si alguien pierde el celular
 
@@ -478,6 +530,7 @@ Después de cualquier cambio de configuración:
 
 | Fecha | Cambio |
 |---|---|
+| 2026-11-19 | Publicación automática: GitHub Actions corre los tests y mueve `publicable`; `scripts/publicar.ps1` publica de noche con respaldo, vuelta atrás y tag con la fecha. Falta dejarla andando en la PC (claves SSH y la tarea). |
 | 2026-11-16 | Revisión de seguridad (`PLAN_SEGURIDAD.md`), en la rama `menu-usuario`: tope de tamaño de los pedidos, `ALLOWED_HOSTS`, tope de IA por organización, el bloqueo ya no confirma la contraseña, una sesión se ata a la PC una sola vez y Grafana pide usuario. |
 | 2026-11-15 | Cloudflare manda la ubicación de cada pedido («Add visitor location headers»), para Mis dispositivos. La guarda la migración 0017 desde que se publique la rama `menu-usuario`. |
 | 2026-11-10 | `oemia.ar` lleva a la app (302, hasta que haya una web) y página de mantenimiento con un Worker de Cloudflare. |
