@@ -188,9 +188,11 @@ todos son esas, las de posición (del, tras, izq…) y los alias del catálogo:
 - Una global no puede repetir un alias del catálogo (409 `ya_es_alias`): eso se cambia desde
   la entrada.
 
-Las primeras globales son `pr` (parabrisas), `pgd` y `pgt` (paragolpes delantero y trasero) y
+Las primeras globales son `pb` (parabrisas), `pgd` y `pgt` (paragolpes delantero y trasero) y
 `pgds` y `pgts` (cada paragolpes con sus dos soportes). Una base que ya tenía catálogo las
 recibe de la migración 0015; una nueva, al sembrar el catálogo (`SEED_GLOBAL_ABBREVIATIONS`).
+Parabrisas nació como `pr`: la migración 0022 la pasa a `pb` en las bases que ya la tenían (si
+la plataforma la cambió, o `pb` ya existe o es un alias del catálogo, la deja como está).
 
 **Frecuencia y lo que va junto**: sale de los repuestos cotizados para cada chasis
 (`vehicle_parts`) del último año, por concesionario, y se recalcula cada 10 minutos.
