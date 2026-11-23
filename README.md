@@ -194,6 +194,10 @@ uv run ruff format .
 # Tests: crean y vacían su propia base (cotizador_test), nunca la de desarrollo
 uv run pytest -v
 
+# Los mismos tests en paralelo (pytest-xdist): unos 70 s en vez de 2,7 min. Cada proceso usa
+# su propia base (cotizador_gw0_test, cotizador_gw1_test…); dos corridas a la vez se pisan.
+uv run pytest -n 8
+
 # Migración nueva después de cambiar un modelo de app/models/
 uv run alembic revision --autogenerate -m "descripcion"
 
