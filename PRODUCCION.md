@@ -310,7 +310,7 @@ C:\OEMIA\Cotizador_BE\scripts\publicar.ps1           # publica ya
 ```
 
 Los tests tienen que estar en verde igual: un hotfix es mergear a `main`, esperar a que GitHub
-Actions termine (unos 8 minutos) y correr el script.
+Actions termine (unos minutos; se ve en la pestaña Actions) y correr el script.
 
 **Para dejarlo andando (una sola vez):**
 
