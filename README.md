@@ -194,6 +194,10 @@ uv run ruff format .
 # Tests: crean y vacían su propia base (cotizador_test), nunca la de desarrollo
 uv run pytest -v
 
+# Los mismos tests en paralelo (pytest-xdist): la mejor opción medida hasta ahora, unos 70 s
+# (ver «Tests en paralelo» abajo).
+uv run pytest -n 8
+
 # Migración nueva después de cambiar un modelo de app/models/
 uv run alembic revision --autogenerate -m "descripcion"
 
@@ -205,5 +209,47 @@ psql -h 127.0.0.1 -U cotizador_dev cotizador_dev
 # pueden perder y ocupan la mayor parte. Con -f y no con >: en PowerShell, > rompe el archivo.
 pg_dump -h 127.0.0.1 -U cotizador_dev -Fc --exclude-table-data="observability.*" -f respaldo.dump cotizador_dev
 ```
+
+### Tests en paralelo
+
+`uv run pytest -n 8` (pytest-xdist) es **el mejor caso medido hasta ahora**: la suite entera
+(1261 tests) tarda unos 70 segundos, contra 5,1 minutos que tardaba antes de noviembre de 2026.
+
+Cómo funciona, en `tests/conftest.py`:
+
+- **Una base por proceso.** Con `-n`, cada proceso usa `cotizador_gw0_test`,
+  `cotizador_gw1_test`… (y `cotizador_migraciones_gw0_test`… para los tests de migraciones). Sin
+  `-n` es `cotizador_test`, como siempre. Dos corridas de `pytest` a la vez se pisan igual,
+  paralelas o no, porque comparten esas bases.
+- **Vaciado entre tests.** Antes era un `TRUNCATE` de las 53 tablas por test: 0,2 s cada uno,
+  casi todo el tiempo de la suite, y en paralelo no mejoraba. Ahora se borra solo de las tablas
+  que tienen filas, con un único `DELETE` con una CTE por tabla (así las claves foráneas se
+  revisan al final y no importa el orden), y las secuencias vuelven a su inicio.
+- **Borrado de la base de migraciones.** A veces un `DROP DATABASE … WITH (FORCE)` fallaba por
+  una conexión de otro rol que todavía se estaba cerrando: ahora se reintenta durante 10 s.
+
+Mediciones en esta PC (i7-12650H: 10 núcleos, 16 hilos; Postgres 18 local), suite completa:
+
+| Cómo se corre | Tiempo |
+|---|---|
+| Antes de los cambios, sin paralelo | 307 s |
+| Sin paralelo, con el vaciado nuevo | 159 s |
+| `-n 4` | 84 s |
+| **`-n 8` (el mejor caso hasta ahora)** | **67 a 72 s** (cuatro corridas) |
+| `-n 12` | 65 s (una sola corrida: no se distingue de `-n 8`) |
+| `-n 16` | 81 s |
+
+Por qué `-n 16` empeora, lo que se midió y lo que no:
+
+- **Medido:** cada proceso arma su base al empezar (crear la base y aplicar las 22 migraciones).
+  Con un archivo de 27 tests, casi todo arranque, `-n 8` tardó 11,5 s y `-n 16` 17,5 s: con más
+  procesos el arranque se vuelve más lento porque compiten por Postgres. Y con 16 procesos
+  cada uno recibe menos tests para repartir ese costo.
+- **Sin medir (es lo que se supone):** los 16 hilos son 10 núcleos con hiperhilos, y Postgres
+  corre en la misma PC: con 16 procesos de Python peleando por la CPU, a Postgres le toca
+  menos, y el disco (escrituras con sincronización) se satura antes.
+
+Para correr uno o pocos tests conviene **no** usar `-n`: cada proceso tiene que armar su base
+primero y el paralelo sale más lento.
 
 Commits en formato convencional: `feat(cotizar): descripción`, `fix(epc): ...`, etc.
