@@ -449,6 +449,32 @@ concesionario y el **SUG**, el precio sugerido de Nissan. En pantalla se muestra
   con IVA que manda el backend; el front no recalcula precios. Como el margen es el mismo para
   todos los números de la organización, el orden entre candidatos no cambia con la fórmula.
 
+**Redondeo del precio de venta** (migración 0021, `Rounding` en `app/services/prices.py`).
+La plataforma lo habilita por organización (Administración → Organizaciones → Editar →
+«Permitir redondear los precios», `organizations.rounding_enabled`, apagado de entrada). Con
+eso, el concesionario elige en Precios → Lista y margen el **paso** (10, 100 o 1.000) y el
+**modo** (`PATCH /precios/redondeo`, 403 si la plataforma no lo habilitó):
+
+- `clasico`: sube desde la mitad y baja si no llega. $ 131.522,85 con paso 100 → $ 131.500.
+- `arriba`: sube siempre. $ 131.522,85 con paso 100 → $ 131.600.
+
+Redondea **el precio de venta con IVA** (`precio_final_con_iva`, y con promoción también
+`precio_sin_promo_con_iva`), en `breakdown()`: es el único lugar donde se define. Es el precio
+al que se vende: cualquier cuenta de ganancias parte de `precio_final_sin_iva` (el redondeado
+entre 1,21), **no** de `margen_concesionario_pct`, que es el margen teórico configurado. El
+costo, el sugerido y `concesionario_con_iva` quedan sin redondear como referencia.
+
+No se redondea: la mano de obra y los precios de compañías, lo que el vendedor escribe a mano
+en un presupuesto ni los descuentos que se aplican a un repuesto dentro de él (todo eso lo
+calcula el presupuesto sobre el unitario, no pasa por `breakdown`). Los presupuestos ya
+guardados conservan el unitario con el que se cotizaron.
+
+**Consistencia con el presupuesto:** se redondea el unitario con IVA, nunca el total del
+renglón. Así el total es unitario × cantidad, y total ÷ 1,21 ÷ cantidad da el unitario sin IVA
+al centavo (hay un test para esto). Lo que no se cumple, y no depende del redondeo, es que el
+subtotal sin IVA *ya redondeado a centavos* dividido por la cantidad dé a veces un centavo de
+diferencia: el presupuesto calcula el subtotal como total ÷ 1,21, como la planilla.
+
 ### 4c. Pantalla Precios — `/precios`
 
 Arriba, pestañas: **Lista y margen** (el margen y el criterio, con su aclaración en una «i»),
